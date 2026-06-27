@@ -16,6 +16,23 @@ data/                  # SQLite + raw cache (regenerable, also bulky)
 *.sqlite*
 *.csv
 
+# === AI coding-tool artifacts (configs/history/state can reference secrets) ===
+.claude/               # local Claude Code settings/state (settings.local.json, etc.)
+.mcp.json              # MCP server configs — frequently hold inline API keys/tokens
+.cursor/
+.windsurf/
+.codeium/
+.continue/
+.copilot/
+.aider*                # aider chat history + .aider.conf.yml (can contain keys)
+.specstory/            # AI chat-history extension
+.history/              # VS Code Local History snapshots (may capture secrets)
+
+# === Logs / temp (agents occasionally write secrets here) ===
+*.log
+tmp/
+.cache/
+
 # === Python / OS / editor cruft ===
 __pycache__/
 *.py[cod]
