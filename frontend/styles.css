@@ -1,0 +1,37 @@
+/* Stage 0 — minimal styling. Real charts/UI arrive in Stage 5. */
+:root {
+  --bg: #0e1117;
+  --fg: #e6edf3;
+  --muted: #8b949e;
+  --accent: #f7931a; /* bitcoin orange */
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.shell {
+  text-align: center;
+  padding: 2rem;
+}
+
+h1 {
+  margin: 0 0 0.5rem;
+  color: var(--accent);
+  font-size: 1.8rem;
+}
+
+.tagline { color: var(--muted); margin-top: 0; }
+.status { font-size: 1rem; }
+.stage { color: var(--muted); font-size: 0.85rem; }
+
+#health.ok { color: #3fb950; }
+#health.err { color: #f85149; }

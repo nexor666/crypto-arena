@@ -1,0 +1,17 @@
+# Keep the build context small and never ship local cruft into the image.
+.git/
+.githooks/
+.gitignore
+data/
+*.db
+*.sqlite*
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+*.log
+.claude/
+README.md

@@ -11,7 +11,8 @@ secrets/
 config.local.*
 
 # === Personal / financial data & the live database ===
-data/                  # SQLite + raw cache (regenerable, also bulky)
+/data/                 # root SQLite + raw cache (regenerable, bulky). Anchored to repo
+                       # root so it does NOT also ignore backend/data/ (the data-layer code).
 *.db
 *.sqlite*
 *.csv

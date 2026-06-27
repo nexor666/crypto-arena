@@ -1,0 +1,13 @@
+# Crypto Cycle Strategy Arena — Python dependencies
+# Pinned with lower bounds (no lockfile yet); the locked tech stack is in the plan.
+
+# --- Web layer (Stage 0+) ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# --- Data layer (Stage 1+) ---
+# Included now so the Docker image is Stage-1 ready and we avoid a rebuild churn.
+pandas>=2.2
+numpy>=1.26
+requests>=2.32
+yfinance>=0.2.40
