@@ -1,7 +1,8 @@
 # === SECRETS & PERSONAL INFO — never commit ===
 .env
 .env.*
-!.env.example          # the only env file allowed (blank template)
+# the only env file allowed (blank template)
+!.env.example
 *.key
 *.pem
 *.secret
@@ -11,23 +12,29 @@ secrets/
 config.local.*
 
 # === Personal / financial data & the live database ===
-/data/                 # root SQLite + raw cache (regenerable, bulky). Anchored to repo
-                       # root so it does NOT also ignore backend/data/ (the data-layer code).
+# root SQLite + raw cache (regenerable, bulky). Anchored to the repo root with a
+# leading slash so it does NOT also ignore backend/data/ (the data-layer CODE).
+/data/
 *.db
 *.sqlite*
 *.csv
 
 # === AI coding-tool artifacts (configs/history/state can reference secrets) ===
-.claude/               # local Claude Code settings/state (settings.local.json, etc.)
-.mcp.json              # MCP server configs — frequently hold inline API keys/tokens
+# local Claude Code settings/state (settings.local.json, etc.)
+.claude/
+# MCP server configs — frequently hold inline API keys/tokens
+.mcp.json
 .cursor/
 .windsurf/
 .codeium/
 .continue/
 .copilot/
-.aider*                # aider chat history + .aider.conf.yml (can contain keys)
-.specstory/            # AI chat-history extension
-.history/              # VS Code Local History snapshots (may capture secrets)
+# aider chat history + .aider.conf.yml (can contain keys)
+.aider*
+# AI chat-history extension
+.specstory/
+# VS Code Local History snapshots (may capture secrets)
+.history/
 
 # === Logs / temp (agents occasionally write secrets here) ===
 *.log
