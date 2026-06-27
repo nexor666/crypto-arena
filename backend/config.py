@@ -56,3 +56,19 @@ MVRV_URL = "https://bitcoin-data.com/v1/mvrv-zscore"
 # Polite identifier for the HTTP-API providers (F&G, MVRV).
 HTTP_USER_AGENT = "crypto-arena/0.1 (+research backtester; non-commercial)"
 HTTP_TIMEOUT = 30  # seconds
+
+# ---------------------------------------------------------------------------
+# Bitcoin halving dates (UTC, the block-reward halvings)
+# ---------------------------------------------------------------------------
+# Halvings are a deterministic, publicly-scheduled supply event — known years in
+# advance — so a strategy keying off "days since/until a halving" uses no
+# look-ahead (everyone knew these dates before they happened). Used by the Halving
+# Cycle Timing strategy. The 2028 entry is the scheduled next halving (~block
+# 1,050,000); a rough estimate, only relevant once the data extends near it.
+HALVING_DATES: list[str] = [
+    "2012-11-28",
+    "2016-07-09",
+    "2020-05-11",
+    "2024-04-20",
+    "2028-04-01",   # scheduled estimate (refine when it lands)
+]

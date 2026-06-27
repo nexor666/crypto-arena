@@ -6,6 +6,26 @@ So adding a strategy = drop a new module here and add one import line — it app
 in the registry (and, later, the frontend) with zero other changes.
 """
 
-from backend.strategies import buy_hold, fear_greed  # noqa: F401
+from backend.strategies import (  # noqa: F401
+    buy_hold,
+    fear_greed,
+    halving_cycle,
+    ma_crossover,
+    mayer_multiple,
+    mvrv_zscore,
+    rebalance,
+    rsi_weekly,
+    two_hundred_week_ma,
+)
 
-__all__ = ["buy_hold", "fear_greed"]
+__all__ = [
+    "buy_hold",
+    "fear_greed",
+    "halving_cycle",
+    "ma_crossover",
+    "mayer_multiple",
+    "mvrv_zscore",
+    "rebalance",
+    "rsi_weekly",
+    "two_hundred_week_ma",
+]

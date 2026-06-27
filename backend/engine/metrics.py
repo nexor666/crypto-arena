@@ -133,6 +133,35 @@ def xirr(cashflows: list[tuple[str, float]], guess: float = 0.1) -> float | None
     return (lo + hi) / 2
 
 
+# ---------------------------------------------------------------------------
+# Standardized score — the single ranking number (pinned in the plan)
+# ---------------------------------------------------------------------------
+# Tentative weights (plan: "tune later" — pinned now so day-5 work can't invent a
+# different formula). Always computed on the AFTER-TAX result by the caller.
+TURNOVER_PENALTY_WEIGHT = 0.01   # penalty per 1x of turnover (100x -> -1.0)
+_DD_FLOOR = 0.01                 # floor on |max DD| so Calmar can't blow up
+
+
+def calmar(cagr: float, max_dd: float) -> float:
+    """After-tax CAGR ÷ |max drawdown| — the risk-adjusted core of the score.
+
+    ``max_dd`` is a negative fraction. We floor its magnitude at ``_DD_FLOOR`` so a
+    (near-)zero-drawdown curve — e.g. an all-cash strategy that never traded —
+    yields a finite, sane number instead of dividing by ~0.
+    """
+    dd = max(abs(max_dd), _DD_FLOOR)
+    return cagr / dd
+
+
+def standardized_score(m: "Metrics", turnover_weight: float = TURNOVER_PENALTY_WEIGHT) -> float:
+    """``Calmar_after_tax − turnover_penalty`` (plan's pinned ranking formula).
+
+    Pass the AFTER-TAX :class:`Metrics`; the turnover penalty kills churn (a
+    strategy that only wins by trading constantly is fragile and tax-heavy).
+    """
+    return calmar(m.cagr, m.max_drawdown) - turnover_weight * m.turnover
+
+
 def compute_metrics(
     snapshots: list[dict[str, Any]],
     trades: list[Any],
