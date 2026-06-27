@@ -1,0 +1,32 @@
+# === SECRETS & PERSONAL INFO — never commit ===
+.env
+.env.*
+!.env.example          # the only env file allowed (blank template)
+*.key
+*.pem
+*.secret
+secrets/
+*credentials*
+*password*
+config.local.*
+
+# === Personal / financial data & the live database ===
+data/                  # SQLite + raw cache (regenerable, also bulky)
+*.db
+*.sqlite*
+*.csv
+
+# === Python / OS / editor cruft ===
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

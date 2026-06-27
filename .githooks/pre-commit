@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# ============================================================================
+# Pre-commit secret scanner  (belt-and-suspenders safety net)
+# ----------------------------------------------------------------------------
+# This project has NO secrets by design. This hook is an extra wall: it blocks
+# any commit whose staged changes look like they contain a secret, key, or
+# personal email. Nothing is committed if it fires.
+#
+# Active because: git config core.hooksPath .githooks
+# If you ever hit a FALSE positive, bypass with:  git commit --no-verify
+# ============================================================================
+set -uo pipefail
+
+fail=0
+report() { printf '  \033[31m✗ %s\033[0m\n' "$1"; fail=1; }
+
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+# 1) Block sensitive FILES from being committed (defense even if .gitignore missed it)
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  base="$(basename "$f")"
+  case "$base" in
+    .env|.env.*) [ "$base" = ".env.example" ] || report "sensitive file staged: $f" ;;
+    *.key|*.pem|id_rsa|id_ed25519|*_rsa|*_ed25519) report "key file staged: $f" ;;
+  esac
+done <<< "$staged"
+
+# 2) Scan ADDED lines for secret patterns (exclude this hooks dir to avoid self-match)
+added="$(git diff --cached -U0 --diff-filter=ACM -- ':!.githooks/' | grep '^+' | grep -v '^+++' || true)"
+
+scan() { # regex, label
+  if printf '%s\n' "$added" | grep -nEi -- "$1" >/dev/null 2>&1; then
+    report "$2"
+  fi
+}
+
+scan '-----BEGIN [A-Z ]*PRIVATE KEY-----'                                          "private key block"
+scan 'AKIA[0-9A-Z]{16}'                                                            "AWS access key id"
+scan '[redacted-personal-email]'                                                         "your real email address"
+scan '(api[_-]?key|apikey|secret|token|passwd|password)["'"'"' ]*[:=]["'"'"' ]*["'"'"'][A-Za-z0-9/+=_-]{12,}["'"'"']' "hardcoded credential assignment"
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo -e "\033[1;31m🚫 COMMIT BLOCKED\033[0m by the secret-scanner (.githooks/pre-commit)."
+  echo "   A staged change looks like a secret or personal info (see above)."
+  echo "   Nothing was committed. Remove/ignore it and try again."
+  echo "   (False positive? Re-run with:  git commit --no-verify )"
+  echo ""
+  exit 1
+fi
+exit 0
