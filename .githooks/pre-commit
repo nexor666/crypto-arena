@@ -38,7 +38,9 @@ scan() { # regex, label
 
 scan '-----BEGIN [A-Z ]*PRIVATE KEY-----'                                          "private key block"
 scan 'AKIA[0-9A-Z]{16}'                                                            "AWS access key id"
-scan '[redacted-personal-email]'                                                         "your real email address"
+# Personal email addresses (commit identity should use the GitHub noreply, which is
+# allowed). Detect common personal providers WITHOUT hardcoding the real address.
+scan '[A-Za-z0-9._%+-]+@(gmail|outlook|hotmail|live|yahoo|proton(mail)?|pm|icloud|me)\.(com|me)' "a personal email address"
 scan '(api[_-]?key|apikey|secret|token|passwd|password)["'"'"' ]*[:=]["'"'"' ]*["'"'"'][A-Za-z0-9/+=_-]{12,}["'"'"']' "hardcoded credential assignment"
 
 if [ "$fail" -ne 0 ]; then
