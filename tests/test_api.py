@@ -8,16 +8,31 @@ return a small synthetic :class:`History`, so the test asserts the API *contract
 
 from __future__ import annotations
 
+import datetime
 import math
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend import main
+from backend.data.store import Store
 from backend.engine.history import History
 from backend.strategies.base import registry
 
 client = TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def temp_store(tmp_path, monkeypatch):
+    """Point the app at a throwaway SQLite db so tests never touch the real ledger.
+
+    The endpoints read the module-global ``store`` at call time, so swapping it here
+    isolates every test (incl. the Stage-7 runs that get appended on each backtest).
+    """
+    s = Store(tmp_path / "test.db")
+    s.init_schema()
+    monkeypatch.setattr(main, "store", s)
+    return s
 
 
 def _synthetic_history(asset="BTC"):
@@ -30,6 +45,23 @@ def _synthetic_history(asset="BTC"):
             "date": f"2020-01-{i + 1:02d}",
             "open": float(c), "high": float(c), "low": float(c), "close": float(c),
             "volume": 1.0, "fear_greed": f,
+        })
+    return History(asset, records)
+
+
+def _long_history(asset="BTC", n=300):
+    """A longer synthetic series (a noisy uptrend) for the validators, which slice
+    the history into folds / start-date windows and so need real length."""
+    d0 = datetime.date(2019, 1, 1)
+    records = []
+    price = 100.0
+    for i in range(n):
+        price *= 1.004 + 0.02 * math.sin(i / 11.0)  # drifting, oscillating
+        d = (d0 + datetime.timedelta(days=i)).isoformat()
+        fng = 50 + 45 * math.sin(i / 9.0)
+        records.append({
+            "date": d, "open": price, "high": price, "low": price,
+            "close": price, "volume": 1.0, "fear_greed": fng,
         })
     return History(asset, records)
 
@@ -134,3 +166,102 @@ def test_backtest_unknown_param_400(monkeypatch):
         "strategies": [{"name": "buy_hold", "params": {"bogus": 1}}],
     })
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Stage 7 — runs ledger + Hall of Fame
+# ---------------------------------------------------------------------------
+def test_backtest_records_runs_and_returns_signature(monkeypatch, temp_store):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _synthetic_history())
+    resp = client.post("/api/backtest", json={
+        "asset": "BTC", "strategies": [{"name": "buy_hold"}, {"name": "fear_greed"}],
+    })
+    body = resp.json()
+    assert body["settings_sig"]
+    # one ledger row per raced strategy
+    rows = temp_store.get_runs()
+    assert len(rows) == 2
+    assert {r["strategy"] for r in rows} == {"buy_hold", "fear_greed"}
+    assert all(r["settings_sig"] == body["settings_sig"] for r in rows)
+
+
+def test_hall_of_fame_aggregates_and_ranks(monkeypatch):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _synthetic_history())
+    # race twice (accumulate tries), with one param override on the second pass
+    client.post("/api/backtest", json={"strategies": [{"name": "buy_hold"},
+                                                       {"name": "fear_greed"}]})
+    client.post("/api/backtest", json={"strategies": [
+        {"name": "buy_hold"}, {"name": "fear_greed", "params": {"buy_below": 15}}]})
+
+    hof = client.get("/api/hall-of-fame").json()
+    assert hof["settings_sig"]
+    assert hof["n_runs"] == 4
+    names = [e["strategy"] for e in hof["strategies"]]
+    assert set(names) == {"buy_hold", "fear_greed"}
+    # ranked by best_score, descending
+    scores = [e["best_score"] for e in hof["strategies"]]
+    assert scores == sorted(scores, reverse=True)
+    bh = next(e for e in hof["strategies"] if e["strategy"] == "buy_hold")
+    assert bh["times_tried"] == 2
+    fg = next(e for e in hof["strategies"] if e["strategy"] == "fear_greed")
+    assert len(fg["configs"]) == 2  # two distinct param sets
+    # best-over-time is monotonic non-decreasing
+    bot = [p["best_score"] for p in hof["best_over_time"]]
+    assert bot == sorted(bot)
+    assert len(hof["best_over_time"]) == 4
+
+
+def test_hall_of_fame_empty_when_no_runs():
+    hof = client.get("/api/hall-of-fame").json()
+    assert hof["n_runs"] == 0
+    assert hof["strategies"] == []
+
+
+# ---------------------------------------------------------------------------
+# Stage 7 — walk-forward + robustness
+# ---------------------------------------------------------------------------
+def test_walk_forward_shape(monkeypatch):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _long_history())
+    resp = client.post("/api/walk-forward", json={"strategy": "fear_greed", "n_folds": 4})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["strategy"] == "fear_greed"
+    assert body["n_folds"] >= 1
+    assert len(body["folds"]) == body["n_folds"]
+    for f in body["folds"]:
+        assert f["test_start"] < f["test_end"]
+        assert "oos_score" in f and "alpha_vs_bh" in f
+        assert set(f["tuned_params"]) == set(registry()["fear_greed"].default_params())
+    assert body["verdict"] in {"robust", "fragile"}
+
+
+def test_robustness_shape(monkeypatch):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _long_history())
+    resp = client.post("/api/robustness", json={"strategy": "buy_hold"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["strategy"] == "buy_hold"
+    assert body["n_starts"] >= 1
+    assert len(body["runs"]) == body["n_starts"]
+    # buy_hold vs buy_hold benchmark = zero alpha everywhere
+    assert all(abs(r["alpha_vs_bh"]) < 1e-9 for r in body["runs"])
+    assert 0.0 <= body["beats_bh_rate"] <= 1.0
+    assert body["verdict"] in {"robust", "fragile"}
+
+
+def test_walk_forward_unknown_strategy_400(monkeypatch):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _long_history())
+    resp = client.post("/api/walk-forward", json={"strategy": "nope"})
+    assert resp.status_code == 400
+
+
+def test_robustness_explicit_start_dates(monkeypatch):
+    monkeypatch.setattr(main, "load_history", lambda *a, **k: _long_history())
+    resp = client.post("/api/robustness", json={
+        "strategy": "fear_greed",
+        "start_dates": ["2019-01-01", "2019-04-01", "2019-07-01"],
+    })
+    body = resp.json()
+    assert resp.status_code == 200
+    assert body["n_starts"] == 3
+    assert [r["start"] for r in body["runs"]] == ["2019-01-01", "2019-04-01", "2019-07-01"]

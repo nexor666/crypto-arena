@@ -129,6 +129,10 @@
     <!-- ───────────────────── live race leaderboard ───────────────────── -->
     <section class="panel leaderboard">
       <h2>Leaderboard <span class="muted">live standings · ranked by portfolio value at the current day</span></h2>
+
+      <!-- winner summary card (best by the after-tax, risk-adjusted definition) -->
+      <div class="winner-card" id="winner-card" hidden></div>
+
       <div class="race-head">
         <span>#</span><span>Strategy</span><span>Return</span>
         <span>Value</span><span>Trades</span><span>Score</span>
@@ -136,11 +140,47 @@
       <div class="race-board" id="race-board">
         <p class="muted empty">Run a backtest, then press Play to race.</p>
       </div>
+
+      <!-- out-of-sample validators -->
+      <div class="validation" id="validation" hidden>
+        <h3>Validate the winner <span class="muted">out-of-sample honesty checks</span></h3>
+        <div class="val-buttons">
+          <button type="button" id="run-walkforward" class="ghost">Walk-forward</button>
+          <button type="button" id="run-robustness" class="ghost">Start-date robustness</button>
+        </div>
+        <div class="validation-out" id="validation-out"></div>
+      </div>
+    </section>
+
+    <!-- ───────────────────── persistent Hall of Fame ───────────────────── -->
+    <section class="panel halloffame">
+      <h2>Hall of Fame <span class="muted">persistent ledger · ranked by best standardized score for the current settings</span></h2>
+      <p class="muted" id="hof-meta">Loading…</p>
+      <div class="hof-grid">
+        <div class="hof-table-wrap">
+          <div class="hof-head">
+            <span>#</span><span>Strategy</span><span>Score</span>
+            <span>CAGR</span><span>Max DD</span><span>Tried</span><span>vs B&amp;H</span>
+          </div>
+          <div class="hof-table" id="hof-table"></div>
+        </div>
+        <div class="hof-visuals">
+          <div class="hof-viz">
+            <h3>Ranked by score</h3>
+            <div class="hof-bars" id="hof-bars"></div>
+          </div>
+          <div class="hof-viz">
+            <h3>Best score over experiments</h3>
+            <div class="hof-bestline" id="hof-bestline"></div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
   <script src="charts.js"></script>
   <script src="playback.js"></script>
+  <script src="arena_extras.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

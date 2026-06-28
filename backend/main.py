@@ -10,6 +10,7 @@ the (Stage-5) frontend can render and animate the race entirely client-side.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -19,11 +20,12 @@ from pydantic import BaseModel, Field
 from backend import config
 from backend.data.refresh import refresh as run_refresh
 from backend.data.store import Store
-from backend.engine import metrics as metrics_mod
+from backend.engine import ledger, metrics as metrics_mod
+from backend.engine import validation as validation_mod
 from backend.engine.backtest import SCHEMA_VERSION, load_history, run_backtest
 from backend.engine.capital import LumpSum
 from backend.engine.tax import TaxPolicy
-from backend.strategies.base import registry
+from backend.strategies.base import get_strategy, registry
 
 # The plan's default *analysis* window (Fear & Greed has full coverage from here,
 # so every strategy is comparable). Callers may override per request.
@@ -36,12 +38,13 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 # One Store instance is fine: each call opens its own short-lived connection.
 store = Store()
+store.init_schema()  # ensure all tables (incl. the Stage-7 runs ledger) exist
 
 
 @app.get("/api/health")
 def health() -> dict:
     """Liveness probe. Returns OK so we can confirm the app is up."""
-    return {"status": "ok", "service": "crypto-arena", "stage": 6}
+    return {"status": "ok", "service": "crypto-arena", "stage": 7}
 
 
 @app.get("/api/data/status")
@@ -209,6 +212,13 @@ def backtest(req: BacktestRequest) -> dict:
     selections = req.strategies or [StrategySelection(name=n) for n in sorted(reg)]
 
     tax_policy = TaxPolicy(enabled=req.tax.enabled, rate=req.tax.rate)
+    capital_model = LumpSum(req.capital)
+    win_start, win_end = history.dates[0], history.dates[-1]
+    settings_sig = ledger.settings_signature(
+        asset, win_start, win_end, req.fee_pct,
+        tax_policy.signature(), capital_model.signature(),
+    )
+
     results: list[dict] = []
     for sel in selections:
         if sel.name not in reg:
@@ -224,12 +234,25 @@ def backtest(req: BacktestRequest) -> dict:
 
         result = run_backtest(
             history, cls(), params=params,
-            capital_model=LumpSum(req.capital),
+            capital_model=capital_model,
             fee_pct=req.fee_pct, tax_policy=tax_policy,
         )
+        post = result.metrics_aftertax
+        score = metrics_mod.standardized_score(post)
         payload = result.as_dict()
-        payload["score"] = metrics_mod.standardized_score(result.metrics_aftertax)
+        payload["score"] = score
         results.append(payload)
+
+        # append this run to the persistent Hall-of-Fame ledger
+        store.record_run(ledger.run_row(
+            asset=asset, strategy=sel.name, params=params,
+            start=win_start, end=win_end, fee_pct=req.fee_pct,
+            tax_sig=tax_policy.signature(), capital_sig=capital_model.signature(),
+            settings_sig=settings_sig, score=score,
+            after_tax_cagr=post.cagr, after_tax_final=post.final_value,
+            max_drawdown=post.max_drawdown, sharpe=post.sharpe,
+            n_trades=post.n_trades,
+        ))
 
     leaderboard = sorted(
         (
@@ -251,14 +274,157 @@ def backtest(req: BacktestRequest) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "asset": asset,
-        "start": history.dates[0],
-        "end": history.dates[-1],
+        "start": win_start,
+        "end": win_end,
         "capital": req.capital,
         "fee_pct": req.fee_pct,
         "tax": tax_policy.signature(),
+        "settings_sig": settings_sig,
         "leaderboard": leaderboard,
         "results": results,
     }
+
+
+# ---------------------------------------------------------------------------
+# Stage 7 — persistent Hall of Fame + validation
+# ---------------------------------------------------------------------------
+def _hall_of_fame(rows: list[dict]) -> list[dict]:
+    """Aggregate ledger rows (one settings signature) into a ranked board.
+
+    Strategy-level by default (one entry per strategy = its best config + total
+    tries), each expandable to its individual configurations. Margins are score
+    deltas to the next strategy and to Buy & Hold — the plan's "how far ahead is the
+    winner" view.
+    """
+    by_strategy: dict[str, list[dict]] = {}
+    for r in rows:
+        by_strategy.setdefault(r["strategy"], []).append(r)
+
+    entries = []
+    for name, runs in by_strategy.items():
+        # group identical param sets into configs
+        configs: dict[str, dict] = {}
+        for r in runs:
+            key = r["params_json"]
+            c = configs.get(key)
+            if c is None or r["standardized_score"] > c["score"]:
+                configs[key] = {
+                    "params": json.loads(r["params_json"]),
+                    "score": r["standardized_score"],
+                    "after_tax_cagr": r["after_tax_cagr"],
+                    "max_drawdown": r["max_drawdown"],
+                    "after_tax_final": r["after_tax_final"],
+                    "tries": 0,
+                    "last_run": r["timestamp"],
+                }
+            configs[key]["tries"] += 1
+        best = max(runs, key=lambda r: r["standardized_score"])
+        entries.append({
+            "strategy": name,
+            "best_score": best["standardized_score"],
+            "after_tax_cagr": best["after_tax_cagr"],
+            "after_tax_final": best["after_tax_final"],
+            "max_drawdown": best["max_drawdown"],
+            "sharpe": best["sharpe"],
+            "n_trades": best["n_trades"],
+            "best_params": json.loads(best["params_json"]),
+            "times_tried": len(runs),
+            "configs": sorted(configs.values(), key=lambda c: c["score"], reverse=True),
+        })
+
+    entries.sort(key=lambda e: e["best_score"], reverse=True)
+    bh_score = next((e["best_score"] for e in entries if e["strategy"] == "buy_hold"), None)
+    for i, e in enumerate(entries):
+        nxt = entries[i + 1]["best_score"] if i + 1 < len(entries) else None
+        e["margin_over_next"] = round(e["best_score"] - nxt, 4) if nxt is not None else None
+        e["margin_over_bh"] = round(e["best_score"] - bh_score, 4) if bh_score is not None else None
+    return entries
+
+
+def _best_over_time(rows: list[dict]) -> list[dict]:
+    """Running best standardized_score vs experiment number (oldest → newest)."""
+    chrono = sorted(rows, key=lambda r: r["id"])
+    out, running = [], -1e18
+    for n, r in enumerate(chrono, 1):
+        running = max(running, r["standardized_score"])
+        out.append({"n": n, "best_score": round(running, 4),
+                    "score": round(r["standardized_score"], 4),
+                    "strategy": r["strategy"], "timestamp": r["timestamp"]})
+    return out
+
+
+@app.get("/api/hall-of-fame")
+def hall_of_fame(settings_sig: str | None = Query(None)) -> dict:
+    """The persistent Hall of Fame for one settings signature (defaults to latest).
+
+    Ranks every strategy ever raced under matching settings by its best
+    ``standardized_score``, with margins, best params and a times-tried counter, plus
+    a best-score-over-time series for the meta-game progress chart. Runs with
+    different settings are never mixed (plan: apples-to-apples only).
+    """
+    sig = settings_sig or store.latest_settings_sig()
+    rows = store.get_runs(settings_sig=sig) if sig else []
+    return {
+        "settings_sig": sig,
+        "n_runs": len(rows),
+        "strategies": _hall_of_fame(rows),
+        "best_over_time": _best_over_time(rows),
+    }
+
+
+class ValidationRequest(BaseModel):
+    """Body for the walk-forward / robustness validators (one strategy at a time)."""
+
+    strategy: str
+    asset: str = "BTC"
+    start: str | None = DEFAULT_ANALYSIS_START
+    end: str | None = None
+    capital: float = 10_000.0
+    fee_pct: float = 0.00075
+    tax: TaxSettings = Field(default_factory=TaxSettings)
+    params: dict[str, float] = Field(default_factory=dict)
+    n_folds: int = 4
+    start_dates: list[str] = Field(default_factory=list)
+
+
+def _validation_context(req: ValidationRequest):
+    """Shared setup for the validators: resolve the strategy + load its history."""
+    asset = req.asset.upper()
+    if asset not in config.ASSETS:
+        raise HTTPException(status_code=404, detail=f"unknown asset '{asset}'")
+    try:
+        cls = get_strategy(req.strategy)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    history = load_history(asset, req.start, req.end, store=store)
+    if len(history) == 0:
+        raise HTTPException(status_code=404, detail=f"no data for '{asset}' — refresh first")
+    tax_policy = TaxPolicy(enabled=req.tax.enabled, rate=req.tax.rate)
+    return cls, history, tax_policy
+
+
+@app.post("/api/walk-forward")
+def walk_forward(req: ValidationRequest) -> dict:
+    """Walk-forward validate one strategy: tune in-sample, score out-of-sample, roll."""
+    cls, history, tax_policy = _validation_context(req)
+    return validation_mod.walk_forward(
+        history, cls, n_folds=req.n_folds, fee_pct=req.fee_pct,
+        tax_policy=tax_policy, capital=req.capital,
+    )
+
+
+@app.post("/api/robustness")
+def robustness(req: ValidationRequest) -> dict:
+    """Start-date robustness: re-run one fixed config from several start dates."""
+    cls, history, tax_policy = _validation_context(req)
+    try:
+        params = cls.resolve_params(req.params)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return validation_mod.robustness(
+        history, cls, params, start_dates=req.start_dates or None,
+        fee_pct=req.fee_pct, tax_policy=tax_policy, capital=req.capital,
+    )
 
 
 # Mount the static frontend LAST. API routes are registered first, so they take

@@ -62,6 +62,7 @@
     });
 
     applyLogScale();
+    if (window.ArenaExtras) window.ArenaExtras.init();
   }
 
   async function checkHealth() {
@@ -86,17 +87,58 @@
       state.strategies = data.strategies;
       box.innerHTML = "<legend>Strategies</legend>";
       for (const s of data.strategies) {
+        const wrap = document.createElement("div");
+        wrap.className = "strat-wrap";
+
         const label = document.createElement("label");
         label.className = "inline strat";
         label.title = s.description || "";
+        const hasParams = Object.keys(s.param_schema || {}).length > 0;
         label.innerHTML =
           `<input type="checkbox" value="${s.name}" checked /> ` +
-          `${s.name} <span class="muted">(${s.universe})</span>`;
-        box.appendChild(label);
+          `${s.name} <span class="muted">(${s.universe})</span>` +
+          (hasParams ? ` <button type="button" class="param-toggle" title="parameters">⚙</button>` : "");
+        wrap.appendChild(label);
+
+        // Per-strategy parameter sliders, built straight from the declared schema
+        // (plan modularity principle 1) — collapsed by default to keep the panel tidy.
+        if (hasParams) {
+          const params = document.createElement("div");
+          params.className = "params";
+          params.dataset.strat = s.name;
+          params.hidden = true;
+          for (const [key, spec] of Object.entries(s.param_schema)) {
+            const row = document.createElement("div");
+            row.className = "param-row";
+            const dec = spec.type === "int" ? 0 : decimals(spec.step);
+            row.innerHTML =
+              `<div class="param-head"><span>${spec.label || key}</span>` +
+              `<span class="pv">${Number(spec.default).toFixed(dec)}</span></div>` +
+              `<input type="range" data-key="${key}" data-dec="${dec}" ` +
+              `min="${spec.min}" max="${spec.max}" step="${spec.step}" value="${spec.default}" />`;
+            const slider = row.querySelector("input");
+            slider.addEventListener("input", () => {
+              row.querySelector(".pv").textContent = Number(slider.value).toFixed(dec);
+            });
+            params.appendChild(row);
+          }
+          wrap.appendChild(params);
+          label.querySelector(".param-toggle").addEventListener("click", (e) => {
+            e.preventDefault();
+            params.hidden = !params.hidden;
+          });
+        }
+        box.appendChild(wrap);
       }
     } catch (err) {
       box.innerHTML = `<legend>Strategies</legend><p class="err">failed: ${err.message}</p>`;
     }
+  }
+
+  // smallest sensible decimal count to display a slider step (0.05 -> 2, 1 -> 0)
+  function decimals(step) {
+    const s = String(step);
+    return s.includes(".") ? s.split(".")[1].length : 0;
   }
 
   async function loadEvents() {
@@ -115,7 +157,18 @@
 
   function selectedStrategies() {
     return [...$("strategy-list").querySelectorAll('input[type="checkbox"]:checked')]
-      .map((cb) => ({ name: cb.value, params: {} }));
+      .map((cb) => ({ name: cb.value, params: readParams(cb.value) }));
+  }
+
+  // Collect a strategy's current slider values into a param-override object.
+  function readParams(name) {
+    const box = $("strategy-list").querySelector(`.params[data-strat="${name}"]`);
+    if (!box) return {};
+    const out = {};
+    box.querySelectorAll('input[type="range"]').forEach((s) => {
+      out[s.dataset.key] = Number(s.value);
+    });
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -175,6 +228,9 @@
       // park at the finish line so the full final result is visible until Play
       playback.seek(state.axis.length - 1);
       equityChart.chart.timeScale().fitContent();
+
+      // Stage-7 extras: winner card, export, Hall of Fame refresh, validators.
+      if (window.ArenaExtras) window.ArenaExtras.onResult(state.result, body);
 
       const r = state.result;
       status.textContent =
@@ -368,9 +424,16 @@
       });
       equityChart.series.set(t.name, line);
 
+      // Clickable legend (plan HoF visual 3: toggle lines on/off as they accumulate).
       const tag = document.createElement("span");
-      tag.className = "legend-item";
+      tag.className = "legend-item toggle";
+      tag.title = "click to show/hide this line";
       tag.innerHTML = `<span class="dot" style="background:${t.color}"></span>${t.name}`;
+      tag.addEventListener("click", () => {
+        const vis = !(tag.classList.contains("off"));
+        line.applyOptions({ visible: !vis });
+        tag.classList.toggle("off", vis);
+      });
       legend.appendChild(tag);
     });
   }

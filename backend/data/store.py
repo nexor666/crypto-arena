@@ -62,6 +62,27 @@ CREATE TABLE IF NOT EXISTS raw_snapshots (
     date_min   TEXT,
     date_max   TEXT
 );
+CREATE TABLE IF NOT EXISTS runs (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp          TEXT NOT NULL,
+    asset              TEXT NOT NULL,
+    strategy           TEXT NOT NULL,
+    params_json        TEXT NOT NULL,
+    start              TEXT NOT NULL,
+    end                TEXT NOT NULL,
+    fee_pct            REAL NOT NULL,
+    tax_json           TEXT NOT NULL,
+    capital_json       TEXT NOT NULL,
+    settings_sig       TEXT NOT NULL,
+    standardized_score REAL,
+    after_tax_cagr     REAL,
+    after_tax_final    REAL,
+    max_drawdown       REAL,
+    sharpe             REAL,
+    n_trades           INTEGER,
+    is_walkforward     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_runs_sig ON runs (settings_sig);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -169,6 +190,57 @@ class Store:
             row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else None
 
+    # -- runs ledger (persistent Hall of Fame, Stage 7) ---------------------
+    # Every backtest appends one row per strategy, so results accumulate across
+    # sessions. ``settings_sig`` groups runs that are apples-to-apples comparable
+    # (same asset / window / fee / tax / capital model) — the Hall of Fame only
+    # ever ranks within a single signature (plan: never compare apples to oranges).
+    _RUN_COLS = (
+        "timestamp", "asset", "strategy", "params_json", "start", "end",
+        "fee_pct", "tax_json", "capital_json", "settings_sig",
+        "standardized_score", "after_tax_cagr", "after_tax_final",
+        "max_drawdown", "sharpe", "n_trades", "is_walkforward",
+    )
+
+    def record_run(self, row: dict[str, Any]) -> int:
+        """Append one run to the ledger; returns its new id."""
+        values = [row.get(c) for c in self._RUN_COLS]
+        placeholders = ", ".join("?" for _ in self._RUN_COLS)
+        cols = ", ".join(self._RUN_COLS)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"INSERT INTO runs ({cols}) VALUES ({placeholders})", values
+            )
+            return int(cur.lastrowid)
+
+    def get_runs(
+        self, settings_sig: str | None = None, asset: str | None = None,
+        include_walkforward: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Ledger rows (newest first), optionally filtered to one signature/asset."""
+        sql = "SELECT * FROM runs WHERE 1=1"
+        params: list[Any] = []
+        if settings_sig is not None:
+            sql += " AND settings_sig = ?"
+            params.append(settings_sig)
+        if asset is not None:
+            sql += " AND asset = ?"
+            params.append(asset)
+        if not include_walkforward:
+            sql += " AND is_walkforward = 0"
+        sql += " ORDER BY id DESC"
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+    def latest_settings_sig(self) -> str | None:
+        """The signature of the most recently recorded (non-walkforward) run."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT settings_sig FROM runs WHERE is_walkforward = 0 "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        return row["settings_sig"] if row else None
+
     # -- readers ------------------------------------------------------------
     def get_prices(
         self, asset: str, start: str | None = None, end: str | None = None,
@@ -256,6 +328,7 @@ class Store:
             out["sentiment"] = _coverage(conn, "sentiment")
             out["onchain"] = _grouped_coverage(conn, "onchain", "metric")
             out["raw_snapshots"] = _count(conn, "raw_snapshots")
+            out["runs"] = _count(conn, "runs")
         return out
 
 

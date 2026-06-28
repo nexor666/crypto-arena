@@ -43,7 +43,8 @@ body {
   grid-template-columns: 280px 1fr;
   grid-template-areas:
     "controls charts"
-    "controls leaderboard";
+    "controls leaderboard"
+    "halloffame halloffame";
   gap: 1rem;
   padding: 1rem 1.5rem;
   align-items: start;
@@ -51,11 +52,12 @@ body {
 .controls { grid-area: controls; position: sticky; top: 1rem; }
 .charts { grid-area: charts; }
 .leaderboard { grid-area: leaderboard; }
+.halloffame { grid-area: halloffame; }
 
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-areas: "controls" "charts" "leaderboard";
+    grid-template-areas: "controls" "charts" "leaderboard" "halloffame";
   }
   .controls { position: static; }
 }
@@ -107,6 +109,29 @@ fieldset {
 }
 fieldset legend { color: var(--muted); padding: 0 0.3rem; }
 label.strat { margin: 0.3rem 0; font-size: 0.85rem; }
+
+/* per-strategy parameter sliders (built from each strategy's param_schema) */
+.strat-wrap { margin: 0.25rem 0; }
+.param-toggle {
+  margin: 0 0 0 auto; padding: 0 0.3rem; font-size: 0.8rem;
+  line-height: 1.4; background: transparent; border: none; color: var(--muted);
+}
+.param-toggle:hover { color: var(--accent); }
+label.strat { display: flex !important; align-items: center; }
+.params {
+  margin: 0.1rem 0 0.5rem 1.4rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 2px solid var(--border);
+}
+.param-row { margin: 0.35rem 0; }
+.param-head {
+  display: flex; justify-content: space-between;
+  font-size: 0.75rem; color: var(--muted);
+}
+.param-head .pv { color: var(--fg); font-variant-numeric: tabular-nums; }
+.params input[type="range"] {
+  width: 100%; margin: 0.1rem 0 0; padding: 0; accent-color: var(--accent);
+}
 
 button {
   margin-top: 0.6rem;
@@ -162,6 +187,9 @@ button.ghost { flex: 1; font-size: 0.8rem; padding: 0.3rem; }
   margin: 0.4rem 0 1.2rem;
 }
 .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--fg); }
+.legend-item.toggle { cursor: pointer; user-select: none; }
+.legend-item.toggle:hover { color: var(--accent); }
+.legend-item.off { opacity: 0.35; text-decoration: line-through; }
 .dot {
   display: inline-block;
   width: 10px; height: 10px;
@@ -245,3 +273,75 @@ button.play { width: auto; margin: 0; padding: 0.4rem 0.9rem; min-width: 92px; }
 .race-row.lead .rank { color: var(--accent); font-weight: 700; }
 .pos { color: var(--pos); }
 .neg { color: var(--neg); }
+
+/* ── winner summary card ── */
+.winner-card {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(247,147,26,0.10), rgba(247,147,26,0.02));
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+}
+.winner-head { display: flex; align-items: center; gap: 0.6rem; }
+.winner-head .trophy { font-size: 1.6rem; }
+.winner-name { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.winner-head .ghost { margin: 0 0 0 auto; flex: none; }
+.winner-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.5rem 0.8rem;
+  margin-top: 0.7rem;
+}
+.wstat { display: flex; flex-direction: column; }
+.wlabel { font-size: 0.72rem; color: var(--muted); }
+.wvalue { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wsub { font-size: 0.7rem; }
+
+/* ── validation (walk-forward / robustness) ── */
+.validation { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.validation h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.val-buttons { display: flex; gap: 0.5rem; }
+.val-buttons .ghost { flex: 1; }
+.validation-out { margin-top: 0.7rem; font-size: 0.82rem; }
+.val-summary { margin-bottom: 0.5rem; }
+.verdict { font-weight: 700; padding: 0.05rem 0.4rem; border-radius: 4px; }
+.verdict.robust { color: var(--pos); border: 1px solid var(--pos); }
+.verdict.fragile { color: #d29922; border: 1px solid #d29922; }
+.val-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.val-table th, .val-table td { padding: 0.25rem 0.4rem; border-bottom: 1px solid var(--border); }
+.val-table th { color: var(--muted); text-align: left; font-weight: 600; }
+.val-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tiny { font-size: 0.72rem; margin: 0.5rem 0 0; }
+
+/* ── Hall of Fame ── */
+.hof-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.2rem; align-items: start; }
+@media (max-width: 760px) { .hof-grid { grid-template-columns: 1fr; } }
+#hof-meta .sig { color: var(--fg); }
+.hof-head, .hof-row, .cfg-row {
+  display: grid;
+  grid-template-columns: 1.8rem 1fr 3.4rem 4rem 4rem 3rem 3.6rem;
+  gap: 0.4rem; align-items: center; padding: 0.3rem 0.4rem;
+}
+.hof-head { color: var(--muted); font-size: 0.76rem; font-weight: 600; border-bottom: 1px solid var(--border); }
+.hof-head span:nth-child(n+3) { text-align: right; }
+.hof-row { border-bottom: 1px solid var(--border); font-size: 0.84rem; }
+.hof-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.hof-row.lead { background: rgba(247,147,26,0.06); }
+.hof-row.lead .name { color: var(--accent); font-weight: 600; }
+.hof-row.clickable { cursor: pointer; }
+.hof-row.clickable:hover { background: rgba(139,148,158,0.08); }
+.hof-row .caret { display: inline-block; width: 0.9rem; color: var(--muted); }
+.hof-configs { background: rgba(13,17,23,0.5); padding: 0.2rem 0 0.4rem; }
+.cfg-row { grid-template-columns: 1fr 3.4rem 4rem 3rem; font-size: 0.76rem; color: var(--muted); padding-left: 2.2rem; }
+.cfg-params { color: var(--fg); font-variant-numeric: tabular-nums; }
+.cfg-row .num { text-align: right; }
+
+.hof-viz { margin-bottom: 1rem; }
+.hof-viz h3 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.bar-row { display: grid; grid-template-columns: 6.5rem 1fr 2.8rem; gap: 0.4rem; align-items: center; margin: 0.25rem 0; font-size: 0.76rem; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { background: #0d1117; border-radius: 4px; height: 0.7rem; overflow: hidden; }
+.bar-fill { display: block; height: 100%; border-radius: 4px; }
+.bar-val { text-align: right; font-variant-numeric: tabular-nums; }
+.bestline-svg { width: 100%; height: 90px; display: block; }
+.bestline-axis { display: flex; justify-content: space-between; margin-top: 0.2rem; }
