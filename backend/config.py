@@ -72,3 +72,19 @@ HALVING_DATES: list[str] = [
     "2024-04-20",
     "2028-04-01",   # scheduled estimate (refine when it lands)
 ]
+
+# ---------------------------------------------------------------------------
+# Notable cycle events — jump-to markers for the frontend (Stage 4 /api/events,
+# Stage 6 race buttons)
+# ---------------------------------------------------------------------------
+# These are well-known *historical* BTC cycle tops/bottoms used purely as UI
+# navigation/shading markers — NOT inputs to any strategy, so they carry no
+# look-ahead concern (a strategy never sees them). Dates are the widely-cited
+# close-to-close extremes; ``kind`` lets the chart colour them.
+NOTABLE_EVENTS: list[dict] = [
+    {"date": "2017-12-17", "label": "2017 top", "kind": "top"},
+    {"date": "2018-12-15", "label": "2018 bottom", "kind": "bottom"},
+    {"date": "2020-03-13", "label": "COVID crash", "kind": "crash"},
+    {"date": "2021-11-10", "label": "2021 top", "kind": "top"},
+    {"date": "2022-11-21", "label": "2022 bottom", "kind": "bottom"},
+]
