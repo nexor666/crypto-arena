@@ -1,15 +1,20 @@
-// Stage 5 — frontend core (static charts).
+// Stage 6 — the race (playback + live leaderboard).
 //
-// Wires the controls to POST /api/backtest, then renders the full result
-// statically: a candlestick price chart (200W MA + halving/cycle lines + bull/bear
-// shading + the selected strategy's trade markers), a multi-line equity chart, and
-// the after-tax leaderboard. No animation yet — that is Stage 6, which reuses these
-// exact per-day series.
+// Stage 5 rendered a backtest statically; Stage 6 animates it. A POST /api/backtest
+// already returns the full per-day equity stream + trades for every strategy, so
+// nothing new is fetched — a client-side clock (playback.js) just walks an index
+// along the shared date axis and this module:
+//   • draws the equity curves in over simulated time,
+//   • sweeps a playhead across the price chart,
+//   • reorders a live leaderboard by current portfolio value, and
+//   • updates the current-date + bull/bear cycle-phase readout,
+// with play/pause, a speed slider, a scrubber and jump-to-event buttons.
 
 (function () {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  const ROW_H = 33; // race-row height incl. border (keep in sync with styles.css)
 
   // ---- in-memory state (last result kept so re-rendering needs no refetch) ----
   const state = {
@@ -17,8 +22,13 @@
     events: { halvings: [], notable: [] },
     result: null,            // last /api/backtest response
     price: null,             // last /api/price-data response
+    axis: [],                // shared date axis (snapshot dates)
+    tracks: [],              // per-strategy { name,color,pre[],after[],cumTrades[],score }
+    rows: new Map(),         // strategy -> race-board row element
+    equityRange: null,       // fixed y-range per lens (stable axis during the race)
+    _prevIndex: -1,          // last drawn frame (for incremental equity updates)
   };
-  let priceChart, equityChart;
+  let priceChart, equityChart, playback;
 
   // ---------------------------------------------------------------------------
   // bootstrap
@@ -26,6 +36,7 @@
   async function init() {
     priceChart = window.Arena.createPriceChart($("price-chart"));
     equityChart = window.Arena.createEquityChart($("equity-chart"));
+    playback = new window.Arena.Playback({ onTick: applyFrame, onState: onPlayState });
 
     checkHealth();
     await Promise.all([loadStrategies(), loadEvents()]);
@@ -37,7 +48,19 @@
       renderMarkers($("marker-strategy").value));
     $("log-scale").addEventListener("change", applyLogScale);
     document.querySelectorAll('input[name="equity-lens"]').forEach((el) =>
-      el.addEventListener("change", () => renderEquity(currentLens())));
+      el.addEventListener("change", () => {
+        if (state.tracks.length) playback.seek(playback.index); // redraw in new lens
+      }));
+
+    // transport
+    $("play").addEventListener("click", () => playback.toggle());
+    $("scrub").addEventListener("input", () => playback.seek(Number($("scrub").value)));
+    $("speed").addEventListener("input", () => {
+      const v = Number($("speed").value);
+      playback.setSpeed(v);
+      $("speed-val").textContent = `${v} d/s`;
+    });
+
     applyLogScale();
   }
 
@@ -125,6 +148,7 @@
     status.textContent = `Racing ${strategies.length} strateg${strategies.length === 1 ? "y" : "ies"}…`;
     status.className = "run-status";
     $("run").disabled = true;
+    playback.pause();
     try {
       const [btRes, pdRes] = await Promise.all([
         fetch("/api/backtest", {
@@ -141,12 +165,20 @@
 
       populateMarkerSelect();
       renderPrice();
-      renderEquity(currentLens());
-      renderLeaderboard();
+
+      // wire up the race over the same per-day series
+      buildPlaybackData();
+      setupEquitySeries();
+      setupRaceBoard();
+      buildJumpButtons();
+      $("transport").hidden = false;
+      // park at the finish line so the full final result is visible until Play
+      playback.seek(state.axis.length - 1);
+      equityChart.chart.timeScale().fitContent();
 
       const r = state.result;
       status.textContent =
-        `Done — ${r.results.length} strategies, ${r.start} → ${r.end}.`;
+        `Ready — ${r.results.length} strategies, ${r.start} → ${r.end}. Press Play to race.`;
       status.className = "run-status ok";
     } catch (err) {
       status.textContent = `Failed: ${err.message}`;
@@ -173,7 +205,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // rendering — price chart
+  // rendering — price chart (static context; the playhead sweeps over it)
   // ---------------------------------------------------------------------------
   function renderPrice() {
     const series = state.price.series;
@@ -218,9 +250,9 @@
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1];
       if (a.kind === "bottom" && b.kind === "top") {
-        bands.push({ from: a.date, to: b.date, color: "rgba(63,185,80,0.06)" });
+        bands.push({ from: a.date, to: b.date, color: "rgba(63,185,80,0.06)", bull: true });
       } else if (a.kind === "top" && b.kind === "bottom") {
-        bands.push({ from: a.date, to: b.date, color: "rgba(248,81,73,0.06)" });
+        bands.push({ from: a.date, to: b.date, color: "rgba(248,81,73,0.06)", bull: false });
       }
     }
     return bands;
@@ -262,62 +294,240 @@
   }
 
   // ---------------------------------------------------------------------------
-  // rendering — equity chart
+  // playback data — precompute everything the per-frame loop needs, once
   // ---------------------------------------------------------------------------
   function currentLens() {
     const el = document.querySelector('input[name="equity-lens"]:checked');
     return el ? el.value : "after_tax";
   }
 
-  function renderEquity(lens) {
-    if (!state.result) return;
-    // tear down previous lines, rebuild from scratch (cheap, < a few k points)
+  function buildPlaybackData() {
+    const results = state.result.results;
+    state.axis = results.length ? results[0].snapshots.map((s) => s.date) : [];
+    const idxOf = new Map(state.axis.map((d, i) => [d, i]));
+    const scoreOf = new Map((state.result.leaderboard || []).map((r) => [r.name, r.score]));
+
+    state.tracks = results.map((r, i) => {
+      // cumulative trade count along the axis (so the live board can count up)
+      const cum = new Array(state.axis.length).fill(0);
+      for (const t of r.trades) {
+        const ti = idxOf.get(t.date);
+        if (ti != null) cum[ti] += 1;
+      }
+      for (let k = 1; k < cum.length; k++) cum[k] += cum[k - 1];
+      return {
+        name: r.strategy,
+        color: window.Arena.colorFor(i),
+        pre: r.snapshots.map((s) => ({ time: s.date, value: s.pre_tax_value })),
+        after: r.snapshots.map((s) => ({ time: s.date, value: s.after_tax_value })),
+        cumTrades: cum,
+        score: scoreOf.get(r.strategy),
+      };
+    });
+
+    computeEquityRange();
+    state._prevIndex = -1;
+    playback.setLength(state.axis.length);
+  }
+
+  // Fixed y-range per lens so the equity axis doesn't jump as lines draw in.
+  function computeEquityRange() {
+    const r = { pre_tax: { min: Infinity, max: -Infinity },
+                after_tax: { min: Infinity, max: -Infinity } };
+    for (const t of state.tracks) {
+      for (const p of t.pre) {
+        if (p.value < r.pre_tax.min) r.pre_tax.min = p.value;
+        if (p.value > r.pre_tax.max) r.pre_tax.max = p.value;
+      }
+      for (const p of t.after) {
+        if (p.value < r.after_tax.min) r.after_tax.min = p.value;
+        if (p.value > r.after_tax.max) r.after_tax.max = p.value;
+      }
+    }
+    for (const k of ["pre_tax", "after_tax"]) {
+      const pad = (r[k].max - r[k].min) * 0.04 || 1;
+      r[k].min -= pad;
+      r[k].max += pad;
+    }
+    state.equityRange = r;
+  }
+
+  function setupEquitySeries() {
     for (const s of equityChart.series.values()) equityChart.chart.removeSeries(s);
     equityChart.series.clear();
-
-    const valueKey = lens === "pre_tax" ? "pre_tax_value" : "after_tax_value";
     const legend = $("equity-legend");
     legend.innerHTML = "";
 
-    state.result.results.forEach((r, i) => {
-      const color = window.Arena.colorFor(i);
+    state.tracks.forEach((t) => {
       const line = equityChart.chart.addLineSeries({
-        color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+        color: t.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false,
+        autoscaleInfoProvider: () => {
+          const range = state.equityRange && state.equityRange[currentLens()];
+          return range ? { priceRange: { minValue: range.min, maxValue: range.max } } : null;
+        },
       });
-      line.setData(r.snapshots.map((s) => ({ time: s.date, value: s[valueKey] })));
-      equityChart.series.set(r.strategy, line);
+      equityChart.series.set(t.name, line);
 
       const tag = document.createElement("span");
       tag.className = "legend-item";
-      tag.innerHTML = `<span class="dot" style="background:${color}"></span>${r.strategy}`;
+      tag.innerHTML = `<span class="dot" style="background:${t.color}"></span>${t.name}`;
       legend.appendChild(tag);
     });
-    equityChart.chart.timeScale().fitContent();
+  }
+
+  function setupRaceBoard() {
+    const board = $("race-board");
+    board.innerHTML = "";
+    board.style.height = `${state.tracks.length * ROW_H}px`;
+    state.rows = new Map();
+    state.tracks.forEach((t) => {
+      const row = document.createElement("div");
+      row.className = "race-row";
+      row.innerHTML =
+        `<span class="rank"></span>` +
+        `<span class="name"><span class="dot" style="background:${t.color}"></span>` +
+        `<span class="label">${t.name}</span></span>` +
+        `<span class="ret"></span><span class="val"></span>` +
+        `<span class="trd"></span><span class="score"></span>`;
+      row.addEventListener("click", () => {
+        $("marker-strategy").value = t.name;
+        renderMarkers(t.name);
+      });
+      board.appendChild(row);
+      state.rows.set(t.name, row);
+    });
   }
 
   // ---------------------------------------------------------------------------
-  // rendering — leaderboard
+  // the per-frame loop — called by the playback clock
   // ---------------------------------------------------------------------------
-  function renderLeaderboard() {
-    const tbody = $("leaderboard").querySelector("tbody");
-    tbody.innerHTML = "";
-    state.result.leaderboard.forEach((row, i) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML =
-        `<td>${i + 1}</td>` +
-        `<td>${row.name}</td>` +
-        `<td>${fmt(row.score, 3)}</td>` +
-        `<td class="${cls(row.after_tax_return_pct)}">${pct(row.after_tax_return_pct)}</td>` +
-        `<td class="${cls(row.after_tax_cagr)}">${pct(row.after_tax_cagr)}</td>` +
-        `<td class="neg">${pct(row.max_drawdown)}</td>` +
-        `<td>${row.n_trades}</td>` +
-        `<td>${money(row.after_tax_final)}</td>`;
-      tr.addEventListener("click", () => {
-        $("marker-strategy").value = row.name;
-        renderMarkers(row.name);
-      });
-      tbody.appendChild(tr);
+  function applyFrame(index, isSeek) {
+    if (!state.tracks.length) return;
+    const lens = currentLens();
+
+    state.tracks.forEach((t) => {
+      const line = equityChart.series.get(t.name);
+      if (!line) return;
+      const pts = lens === "pre_tax" ? t.pre : t.after;
+      if (isSeek) {
+        line.setData(pts.slice(0, index + 1));
+      } else {
+        for (let j = state._prevIndex + 1; j <= index; j++) {
+          if (pts[j]) line.update(pts[j]);
+        }
+      }
     });
+    state._prevIndex = index;
+
+    const date = state.axis[index];
+    priceChart.overlay.setPlayhead(date);
+    updateReadout(index, date);
+    renderRaceFrame(index, lens);
+  }
+
+  function renderRaceFrame(index, lens) {
+    const standings = state.tracks.map((t) => {
+      const pts = lens === "pre_tax" ? t.pre : t.after;
+      const v = (pts[index] || pts[pts.length - 1]).value;
+      const init = t.pre[0] ? t.pre[0].value : 1;
+      return {
+        name: t.name, value: v, ret: init ? v / init - 1 : 0,
+        trades: t.cumTrades[index] || 0, score: t.score,
+      };
+    });
+    standings.sort((a, b) => b.value - a.value);
+
+    standings.forEach((s, rank) => {
+      const row = state.rows.get(s.name);
+      if (!row) return;
+      row.style.transform = `translateY(${rank * ROW_H}px)`;
+      row.classList.toggle("lead", rank === 0);
+      row.querySelector(".rank").textContent = rank + 1;
+      const ret = row.querySelector(".ret");
+      ret.textContent = pct(s.ret);
+      ret.className = `ret ${cls(s.ret)}`;
+      row.querySelector(".val").textContent = money(s.value);
+      row.querySelector(".trd").textContent = s.trades;
+      row.querySelector(".score").textContent = fmt(s.score, 2);
+    });
+  }
+
+  function updateReadout(index, date) {
+    $("play-date").textContent = date || "—";
+    const ph = phaseAt(date);
+    const el = $("play-phase");
+    el.textContent = ph.label;
+    el.className = `play-phase ${ph.phase}`;
+    const scrub = $("scrub");
+    if (document.activeElement !== scrub) scrub.value = index;
+  }
+
+  // bull/bear from the regime bands (between known tops/bottoms) + days since the
+  // most recent halving. Outside a known band we don't claim a regime — we just
+  // report the halving offset rather than mislabel the day.
+  function phaseAt(date) {
+    if (!date) return { phase: "neutral", label: "—" };
+    let phase = "neutral", regime = "";
+    for (const b of regimeBands()) {
+      if (date >= b.from && date <= b.to) {
+        phase = b.bull ? "bull" : "bear";
+        regime = b.bull ? "Bull market" : "Bear market";
+        break;
+      }
+    }
+    let since = "";
+    const past = (state.events.halvings || [])
+      .map((h) => h.date).filter((d) => d <= date).sort();
+    if (past.length) {
+      const days = Math.round((Date.parse(date) - Date.parse(past[past.length - 1])) / 86400000);
+      since = `${days}d since halving`;
+    }
+    return { phase, label: [regime, since].filter(Boolean).join(" · ") || "—" };
+  }
+
+  function onPlayState(st) {
+    $("play").textContent = st.playing ? "❚❚ Pause" : "▶ Play";
+    const scrub = $("scrub");
+    scrub.max = Math.max(0, st.length - 1);
+    if (document.activeElement !== scrub) scrub.value = st.index;
+  }
+
+  // ---------------------------------------------------------------------------
+  // jump-to-event buttons (within the run window only)
+  // ---------------------------------------------------------------------------
+  function buildJumpButtons() {
+    const box = $("jump-buttons");
+    box.innerHTML = "";
+    if (!state.axis.length) return;
+    const first = state.axis[0], last = state.axis[state.axis.length - 1];
+    const inRange = (d) => d >= first && d <= last;
+
+    const mk = (label, date, kind) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      if (kind) b.className = kind;
+      b.addEventListener("click", () => { playback.pause(); playback.seek(nearestIndex(date)); });
+      box.appendChild(b);
+    };
+
+    mk("Start", first, "");
+    for (const h of state.events.halvings || []) if (inRange(h.date)) mk(h.label, h.date, "halving");
+    for (const e of state.events.notable || []) if (inRange(e.date)) mk(e.label, e.date, e.kind);
+    mk("Latest", last, "");
+  }
+
+  function nearestIndex(date) {
+    const a = state.axis;
+    if (!a.length) return 0;
+    if (date <= a[0]) return 0;
+    if (date >= a[a.length - 1]) return a.length - 1;
+    let lo = 0, hi = a.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (a[m] < date) lo = m + 1; else hi = m;
+    }
+    return lo;
   }
 
   // ---- formatting helpers ----

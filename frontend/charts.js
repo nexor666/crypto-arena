@@ -47,13 +47,19 @@
   // ---------------------------------------------------------------------------
   class CycleOverlay {
     constructor() {
-      this._lines = [];   // [{ time, color, dashed }]
-      this._bands = [];   // [{ from, to, color }]
+      this._lines = [];     // [{ time, color, dashed }]
+      this._bands = [];     // [{ from, to, color }]
+      this._playhead = null; // a time, or null — the Stage-6 race cursor
       this._chart = null;
     }
     setData(lines, bands) {
       this._lines = lines || [];
       this._bands = bands || [];
+      if (this._requestUpdate) this._requestUpdate();
+    }
+    // Stage 6: a bright vertical cursor marking the current playback day.
+    setPlayhead(time) {
+      this._playhead = time || null;
       if (this._requestUpdate) this._requestUpdate();
     }
     attached(params) {
@@ -109,6 +115,22 @@
           ctx.lineTo(bx, h);
           ctx.stroke();
           ctx.restore();
+        }
+
+        // playback cursor on top of everything
+        if (this._playhead) {
+          const c = x(this._playhead);
+          if (c !== null) {
+            const bx = Math.round(c * hr) + 0.5;
+            ctx.save();
+            ctx.beginPath();
+            ctx.lineWidth = Math.max(1, Math.floor(hr));
+            ctx.strokeStyle = "rgba(231,237,243,0.9)";
+            ctx.moveTo(bx, 0);
+            ctx.lineTo(bx, h);
+            ctx.stroke();
+            ctx.restore();
+          }
         }
       });
     }

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Cycle Strategy Arena</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="styles.css" />
   <!-- TradingView Lightweight Charts (MIT). Pinned for reproducible static serve. -->
   <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
@@ -91,6 +92,25 @@
         &nbsp;·&nbsp; green/red bands = bull / bear regime
       </p>
 
+      <!-- ─────────────────── the race transport ─────────────────── -->
+      <div class="transport" id="transport" hidden>
+        <div class="transport-row">
+          <button type="button" id="play" class="primary play">▶ Play</button>
+          <input type="range" id="scrub" class="scrub" min="0" max="0" value="0" step="1" />
+          <div class="readout">
+            <span id="play-date" class="play-date">—</span>
+            <span id="play-phase" class="play-phase"></span>
+          </div>
+        </div>
+        <div class="transport-row sub">
+          <label class="inline speed">Speed
+            <input type="range" id="speed" min="5" max="400" value="60" step="5" />
+            <span id="speed-val" class="muted">60 d/s</span>
+          </label>
+          <div class="jump" id="jump-buttons"></div>
+        </div>
+      </div>
+
       <div class="chart-head">
         <h2>Equity curves</h2>
         <div class="chart-controls">
@@ -106,22 +126,21 @@
       <p class="legend" id="equity-legend"></p>
     </section>
 
-    <!-- ───────────────────────── leaderboard ───────────────────────── -->
+    <!-- ───────────────────── live race leaderboard ───────────────────── -->
     <section class="panel leaderboard">
-      <h2>Leaderboard <span class="muted">after-tax · ranked by standardized score</span></h2>
-      <table id="leaderboard">
-        <thead>
-          <tr>
-            <th>#</th><th>Strategy</th><th>Score</th><th>Return</th>
-            <th>CAGR</th><th>Max DD</th><th>Trades</th><th>Final $</th>
-          </tr>
-        </thead>
-        <tbody><tr><td colspan="8" class="muted">Run a backtest to populate.</td></tr></tbody>
-      </table>
+      <h2>Leaderboard <span class="muted">live standings · ranked by portfolio value at the current day</span></h2>
+      <div class="race-head">
+        <span>#</span><span>Strategy</span><span>Return</span>
+        <span>Value</span><span>Trades</span><span>Score</span>
+      </div>
+      <div class="race-board" id="race-board">
+        <p class="muted empty">Run a backtest, then press Play to race.</p>
+      </div>
     </section>
   </main>
 
   <script src="charts.js"></script>
+  <script src="playback.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

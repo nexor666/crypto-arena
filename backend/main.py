@@ -41,7 +41,7 @@ store = Store()
 @app.get("/api/health")
 def health() -> dict:
     """Liveness probe. Returns OK so we can confirm the app is up."""
-    return {"status": "ok", "service": "crypto-arena", "stage": 5}
+    return {"status": "ok", "service": "crypto-arena", "stage": 6}
 
 
 @app.get("/api/data/status")

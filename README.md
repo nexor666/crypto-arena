@@ -13,8 +13,9 @@ day trading.
 
 ## Status
 
-The build is staged; the core engine + API are complete and a static web UI now
-renders the race (charts + leaderboard).
+The build is staged; the core engine + API are complete and the web UI now
+**plays back the race** — press Play and watch the equity curves draw in over
+simulated time while the leaderboard re-orders.
 
 | Stage | What | State |
 |------:|------|:-----:|
@@ -24,15 +25,17 @@ renders the race (charts + leaderboard).
 | 3 | Full strategy library — 9 strategies + CLI leaderboard | ✅ **(MVP cut line)** |
 | 4 | API layer (`/api/strategies`, `/api/events`, `POST /api/backtest`) | ✅ |
 | 5 | Frontend core — static price + equity charts | ✅ |
-| 6 | The race — playback + live-reordering leaderboard | ⏳ next |
-| 7 | Polish, tuning, winner export, walk-forward + robustness | ⏳ |
+| 6 | The race — playback + live-reordering leaderboard | ✅ |
+| 7 | Polish, tuning, winner export, walk-forward + robustness | ⏳ next |
 | 8 | Grid-search auto-tuner (stretch) | ⏳ |
 
 **MVP cut line reached at Stage 3:** the CLI can already answer "which strategy
 wins" over real history. Stages 4+ add the JSON API and the visual game — as of
-Stage 5 the browser UI at <http://localhost:8000> renders a full backtest as
-candlestick + equity charts with a ranked leaderboard (playback animation is
-Stage 6).
+Stage 6 the browser UI at <http://localhost:8000> runs a backtest and then
+**animates it**: a timeline scrubber, play/pause, speed slider, a price-chart
+playhead, equity curves that draw in over time, a current-date + cycle-phase
+readout, jump-to-event buttons, and a leaderboard that re-ranks live by portfolio
+value as the days advance.
 
 **Strategies (9, auto-discovered plugins, each with a declared param schema):**
 Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
@@ -114,22 +117,28 @@ curl -s -X POST localhost:8000/api/backtest \
        "strategies":[{"name":"mayer","params":{"buy_below":0.9}},{"name":"buy_hold"}]}'
 ```
 
-### Web UI (Stage 5 — static charts)
+### Web UI (Stage 6 — the race)
 
 With the app running (Docker or `uvicorn`), open <http://localhost:8000>. Pick an
 asset, date range, capital, fee and tax settings, tick the strategies to race, and
-hit **Run race**. The page calls `POST /api/backtest` once and renders the whole
-result client-side:
+hit **Run race**. The page calls `POST /api/backtest` *once* and then animates the
+whole result client-side — "compute once, animate in the browser", no streaming:
 
 - a **candlestick price chart** (log-scale) with the 200-Week MA, halving + cycle
-  vertical lines, bull/bear regime shading, and the selected strategy's buy/sell
-  markers (pick which strategy's trades to overlay, or click a leaderboard row);
-- a **multi-line equity chart** (one line per strategy, pre-/after-tax toggle);
-- the **after-tax leaderboard** ranked by `standardized_score`.
+  vertical lines, bull/bear regime shading, a sweeping **playback cursor**, and the
+  selected strategy's buy/sell markers (pick which strategy's trades to overlay, or
+  click a leaderboard row);
+- a **transport bar** — Play/Pause, a timeline scrubber, a speed slider
+  (simulated days per second), a current-date + bull/bear cycle-phase readout, and
+  **jump-to-event** buttons (halvings, cycle tops/bottoms, COVID crash, latest);
+- a **multi-line equity chart** that **draws in over simulated time** (pre-/after-tax
+  toggle, stable axis so it doesn't jump as lines grow);
+- a **live leaderboard** that **re-orders** by each strategy's portfolio value at the
+  current day, counting trades up as they happen, with the static `standardized_score`
+  shown for reference.
 
 Charts are [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)
-(MIT), loaded from a CDN — no build step. Playback/animation arrives in Stage 6;
-the per-day result schema it needs is already served.
+(MIT), loaded from a CDN — no build step.
 
 ### Tests
 
@@ -150,5 +159,5 @@ crypto-arena/
     data/            # fetchers, indicators, sqlite store (Stage 1)
     engine/          # portfolio, tax, backtest loop, metrics (Stage 2)
     strategies/      # strategy plugins + registry (Stages 2-3)
-  frontend/          # static UI: index.html, app.js, charts.js, styles.css (Stage 5)
+  frontend/          # UI: index.html, app.js, charts.js, playback.js, styles.css (Stages 5-6)
 ```
