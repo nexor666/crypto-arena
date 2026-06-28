@@ -5,14 +5,123 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Crypto Cycle Strategy Arena</title>
   <link rel="stylesheet" href="styles.css" />
+  <!-- TradingView Lightweight Charts (MIT). Pinned for reproducible static serve. -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-  <main class="shell">
-    <h1>Crypto Cycle Strategy Arena</h1>
-    <p class="tagline">Race long-term crypto strategies across full market cycles.</p>
+  <header class="topbar">
+    <div>
+      <h1>Crypto Cycle Strategy Arena</h1>
+      <p class="tagline">Race long-term crypto strategies across full market cycles.</p>
+    </div>
     <p class="status">Backend: <span id="health">checking…</span></p>
-    <p class="stage">Stage 0 — scaffolding. The race arrives in later stages.</p>
+  </header>
+
+  <main class="layout">
+    <!-- ───────────────────────── controls ───────────────────────── -->
+    <aside class="panel controls">
+      <h2>Run a backtest</h2>
+
+      <label>Asset
+        <select id="asset">
+          <option value="BTC">BTC</option>
+          <option value="ETH">ETH</option>
+          <option value="BNB">BNB</option>
+        </select>
+      </label>
+
+      <div class="row">
+        <label>Start
+          <input type="date" id="start" value="2018-01-01" />
+        </label>
+        <label>End
+          <input type="date" id="end" />
+        </label>
+      </div>
+
+      <div class="row">
+        <label>Capital ($)
+          <input type="number" id="capital" value="10000" min="1" step="100" />
+        </label>
+        <label>Fee (%)
+          <input type="number" id="fee" value="0.075" min="0" step="0.005" />
+        </label>
+      </div>
+
+      <label class="inline">
+        <input type="checkbox" id="tax-enabled" checked />
+        Tax on realized gains
+      </label>
+      <label>Tax rate (%)
+        <input type="number" id="tax-rate" value="22" min="0" max="100" step="1" />
+      </label>
+
+      <fieldset id="strategy-list">
+        <legend>Strategies</legend>
+        <p class="muted">loading…</p>
+      </fieldset>
+      <div class="row">
+        <button type="button" id="select-all" class="ghost">All</button>
+        <button type="button" id="select-none" class="ghost">None</button>
+      </div>
+
+      <button type="button" id="run" class="primary">Run race</button>
+      <p id="run-status" class="run-status"></p>
+    </aside>
+
+    <!-- ───────────────────────── charts ───────────────────────── -->
+    <section class="panel charts">
+      <div class="chart-head">
+        <h2>Price <span class="muted" id="price-asset"></span></h2>
+        <div class="chart-controls">
+          <label class="inline">Trades:
+            <select id="marker-strategy"></select>
+          </label>
+          <label class="inline">
+            <input type="checkbox" id="log-scale" checked /> Log scale
+          </label>
+        </div>
+      </div>
+      <div id="price-chart" class="chart"></div>
+      <p class="legend" id="event-legend">
+        <span class="dot halving"></span> Halving
+        <span class="dot top"></span> Cycle top
+        <span class="dot bottom"></span> Cycle bottom
+        <span class="dot crash"></span> Crash
+        &nbsp;·&nbsp; green/red bands = bull / bear regime
+      </p>
+
+      <div class="chart-head">
+        <h2>Equity curves</h2>
+        <div class="chart-controls">
+          <label class="inline">
+            <input type="radio" name="equity-lens" value="after_tax" checked /> After-tax
+          </label>
+          <label class="inline">
+            <input type="radio" name="equity-lens" value="pre_tax" /> Pre-tax
+          </label>
+        </div>
+      </div>
+      <div id="equity-chart" class="chart"></div>
+      <p class="legend" id="equity-legend"></p>
+    </section>
+
+    <!-- ───────────────────────── leaderboard ───────────────────────── -->
+    <section class="panel leaderboard">
+      <h2>Leaderboard <span class="muted">after-tax · ranked by standardized score</span></h2>
+      <table id="leaderboard">
+        <thead>
+          <tr>
+            <th>#</th><th>Strategy</th><th>Score</th><th>Return</th>
+            <th>CAGR</th><th>Max DD</th><th>Trades</th><th>Final $</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="8" class="muted">Run a backtest to populate.</td></tr></tbody>
+      </table>
+    </section>
   </main>
+
+  <script src="charts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

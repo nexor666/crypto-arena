@@ -13,7 +13,8 @@ day trading.
 
 ## Status
 
-The build is staged; the core engine is complete and the API layer is live.
+The build is staged; the core engine + API are complete and a static web UI now
+renders the race (charts + leaderboard).
 
 | Stage | What | State |
 |------:|------|:-----:|
@@ -22,13 +23,16 @@ The build is staged; the core engine is complete and the API layer is live.
 | 2 | Backtest engine core (per-lot portfolio, HPFU tax lens, no-look-ahead daily loop, metrics) | ✅ |
 | 3 | Full strategy library — 9 strategies + CLI leaderboard | ✅ **(MVP cut line)** |
 | 4 | API layer (`/api/strategies`, `/api/events`, `POST /api/backtest`) | ✅ |
-| 5 | Frontend core — static price + equity charts | ⏳ next |
-| 6 | The race — playback + live-reordering leaderboard | ⏳ |
+| 5 | Frontend core — static price + equity charts | ✅ |
+| 6 | The race — playback + live-reordering leaderboard | ⏳ next |
 | 7 | Polish, tuning, winner export, walk-forward + robustness | ⏳ |
 | 8 | Grid-search auto-tuner (stretch) | ⏳ |
 
 **MVP cut line reached at Stage 3:** the CLI can already answer "which strategy
-wins" over real history. Stages 4+ add the JSON API and the visual game.
+wins" over real history. Stages 4+ add the JSON API and the visual game — as of
+Stage 5 the browser UI at <http://localhost:8000> renders a full backtest as
+candlestick + equity charts with a ranked leaderboard (playback animation is
+Stage 6).
 
 **Strategies (9, auto-discovered plugins, each with a declared param schema):**
 Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
@@ -110,6 +114,23 @@ curl -s -X POST localhost:8000/api/backtest \
        "strategies":[{"name":"mayer","params":{"buy_below":0.9}},{"name":"buy_hold"}]}'
 ```
 
+### Web UI (Stage 5 — static charts)
+
+With the app running (Docker or `uvicorn`), open <http://localhost:8000>. Pick an
+asset, date range, capital, fee and tax settings, tick the strategies to race, and
+hit **Run race**. The page calls `POST /api/backtest` once and renders the whole
+result client-side:
+
+- a **candlestick price chart** (log-scale) with the 200-Week MA, halving + cycle
+  vertical lines, bull/bear regime shading, and the selected strategy's buy/sell
+  markers (pick which strategy's trades to overlay, or click a leaderboard row);
+- a **multi-line equity chart** (one line per strategy, pre-/after-tax toggle);
+- the **after-tax leaderboard** ranked by `standardized_score`.
+
+Charts are [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)
+(MIT), loaded from a CDN — no build step. Playback/animation arrives in Stage 6;
+the per-day result schema it needs is already served.
+
 ### Tests
 
 ```bash
@@ -129,5 +150,5 @@ crypto-arena/
     data/            # fetchers, indicators, sqlite store (Stage 1)
     engine/          # portfolio, tax, backtest loop, metrics (Stage 2)
     strategies/      # strategy plugins + registry (Stages 2-3)
-  frontend/          # index.html, app.js, charts.js, styles.css
+  frontend/          # static UI: index.html, app.js, charts.js, styles.css (Stage 5)
 ```
