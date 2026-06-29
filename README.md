@@ -70,37 +70,96 @@ risk-adjusted, low-churn returns rather than raw headline gains.
 
 ## Run
 
-### Quickest — pulled image, zero setup
+**New to all this? Don't worry — this section assumes zero prior setup.** There are
+two ways to run the app; pick one:
 
-The published image ships with a **baked-in market-data database**, so it runs out
-of the box — no clone, no build, no data fetch:
+- **🟢 Option A — Just run it (easiest).** Download a ready-made package and start it
+  with a single command. No code, no building, data already included. Best for
+  trying it out.
+- **🔧 Option B — Build it yourself from the source code.** Get the code and build
+  the package on your own machine. Best if you want to read or change the code.
+
+**Both options need Docker** — a free tool that runs the app in a self-contained box
+so you don't have to install Python, databases, or anything else by hand. Install it
+once (Step 1), then follow Option A *or* B.
+
+### Step 1 — Install Docker (one-time)
+
+**On Linux** (Ubuntu, Debian, Fedora, Mint, and most others) — open a terminal and
+paste these three lines, one at a time:
+
+```bash
+curl -fsSL https://get.docker.com | sh      # installs Docker (asks for your password)
+sudo usermod -aG docker $USER               # lets you run docker without sudo
+newgrp docker                               # apply that now (or just log out and back in)
+```
+
+<details><summary>On Arch / Manjaro / CachyOS instead</summary>
+
+```bash
+sudo pacman -S docker                        # install
+sudo systemctl enable --now docker           # start it now + on every boot
+sudo usermod -aG docker $USER && newgrp docker
+```
+</details>
+
+**On Windows or macOS:** download **Docker Desktop** from
+<https://www.docker.com/products/docker-desktop/>, install it, and open it once so
+it's running. Then use the same commands below in PowerShell (Windows) or Terminal
+(macOS).
+
+**Check it works** (should print "Hello from Docker!"):
+
+```bash
+docker run hello-world
+```
+
+> If that last command says "permission denied", you haven't applied the group
+> change yet — close the terminal and open a new one (or just reboot), then retry.
+
+### 🟢 Option A — Run the ready-made package (no code, no building)
+
+The published image already contains the app **and** a market-data database, so this
+one command downloads it and starts everything:
 
 ```bash
 docker run -p 8000:8000 ghcr.io/nexor666/crypto-arena
 ```
 
-Then open <http://localhost:8000> and check <http://localhost:8000/api/health>.
-The Hall of Fame starts empty and fills as you race. To keep your runs (and any
-data refresh) across container restarts, mount a volume:
+The first run downloads the image (a minute or two); after that it's instant. When
+it prints that it's running, open your web browser to **<http://localhost:8000>** —
+that's the app. (Sanity check: <http://localhost:8000/api/health> should show
+`{"status":"ok",...}`.) **To stop it**, press `Ctrl+C` in the terminal.
+
+Your Hall of Fame starts empty and fills as you race strategies. By default those
+results disappear when the container is removed; to **keep them** across restarts,
+add a storage volume:
 
 ```bash
 docker run -p 8000:8000 -v arena-data:/app/data ghcr.io/nexor666/crypto-arena
 ```
 
-### From source (Docker)
+### 🔧 Option B — Build it yourself from source
+
+You'll also need **git** (to download the code). Install it if you don't have it:
+`sudo apt install git` (Ubuntu/Debian), `sudo pacman -S git` (Arch), or from
+<https://git-scm.com> (Windows/macOS). Then:
 
 ```bash
+git clone https://github.com/nexor666/crypto-arena.git
+cd crypto-arena
 docker compose up --build
 ```
 
-Builds the image locally (the build bakes a fresh data snapshot) and serves on
-<http://localhost:8000>. `data/` is bind-mounted and seeded on first start.
+That builds the image locally (the build automatically fetches a fresh data
+snapshot — needs internet, takes a few minutes the first time) and serves it at
+**<http://localhost:8000>**. Stop it with `Ctrl+C`. Your data and Hall of Fame live
+in the `data/` folder next to the code, so they persist between runs.
 
-### From source (local dev, no Docker)
+<details><summary>Advanced — run from source without Docker (Python dev)</summary>
 
-The data libraries live in `requirements.txt`; install them into a venv. Activate
-per your shell, **or** just call the venv's interpreter directly (shell-agnostic —
-works in bash, zsh and fish):
+The data libraries live in `requirements.txt`; install them into a virtual env.
+Call the venv's interpreter directly (works in bash, zsh and fish):
 
 ```bash
 python -m venv venv
@@ -109,12 +168,8 @@ venv/bin/python -m backend.data.refresh        # populate the SQLite store first
 venv/bin/uvicorn backend.main:app --reload --port 8000
 ```
 
-<details><summary>Prefer to activate the venv?</summary>
-
-```bash
-source venv/bin/activate          # bash / zsh
-source venv/bin/activate.fish     # fish
-```
+Prefer to "activate" the venv first? `source venv/bin/activate` (bash/zsh) or
+`source venv/bin/activate.fish` (fish) — then drop the `venv/bin/` prefixes.
 </details>
 
 ### Updating the market data
