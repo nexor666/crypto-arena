@@ -44,8 +44,7 @@
     $("run").addEventListener("click", runBacktest);
     $("select-all").addEventListener("click", () => toggleAll(true));
     $("select-none").addEventListener("click", () => toggleAll(false));
-    $("marker-strategy").addEventListener("change", () =>
-      renderMarkers($("marker-strategy").value));
+    $("marker-strategy").addEventListener("change", () => renderMarkersUpTo(true));
     $("log-scale").addEventListener("change", applyLogScale);
     document.querySelectorAll('input[name="equity-lens"]').forEach((el) =>
       el.addEventListener("change", () => {
@@ -225,9 +224,11 @@
       setupRaceBoard();
       buildJumpButtons();
       $("transport").hidden = false;
-      // park at the finish line so the full final result is visible until Play
-      playback.seek(state.axis.length - 1);
-      equityChart.chart.timeScale().fitContent();
+      // start at the starting line: everyone tied at the opening capital, curves
+      // flat, no trades drawn yet — so pressing Play reveals the race rather than
+      // replaying a result you've already seen. (applyFrame pins the equity x-axis to
+      // the full window so drawing-in from a single day-0 point doesn't squash it.)
+      playback.seek(0);
 
       // Stage-7 extras: winner card, export, Hall of Fame refresh, validators.
       if (window.ArenaExtras) window.ArenaExtras.onResult(state.result, body);
@@ -292,7 +293,10 @@
     }
     priceChart.overlay.setData(lines, regimeBands());
 
-    renderMarkers($("marker-strategy").value);
+    // Trades are revealed in sync with the playback clock (see renderMarkersUpTo),
+    // so start the price chart clean; the seek(0) after buildPlaybackData draws the
+    // opening frame's markers.
+    priceChart.candles.setMarkers([]);
     priceChart.chart.timeScale().fitContent();
   }
 
@@ -314,19 +318,35 @@
     return bands;
   }
 
-  function renderMarkers(strategyName) {
-    if (!state.result) return;
-    const r = state.result.results.find((x) => x.strategy === strategyName);
-    if (!r) { priceChart.candles.setMarkers([]); return; }
-    const markers = r.trades.map((t) => ({
-      time: t.date,
-      position: t.side === "BUY" ? "belowBar" : "aboveBar",
-      color: t.side === "BUY" ? "#3fb950" : "#f85149",
-      shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
-      text: t.side === "BUY" ? "B" : "S",
-    }));
-    markers.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
-    priceChart.candles.setMarkers(markers);
+  // Reveal the selected strategy's buy/sell arrows up to the current playback
+  // frame, so they appear in sync as the race plays (slow the speed down and you
+  // watch each decision happen). force=true rebuilds from scratch (strategy
+  // changed, or a seek); otherwise we only touch the chart when the playhead has
+  // newly crossed one or more trades — so most frames are free and a high-turnover
+  // strategy's arrows trickle in over the run instead of all landing at once.
+  function renderMarkersUpTo(force) {
+    const track = state.tracks.find((t) => t.name === $("marker-strategy").value);
+    if (!track || !track.marks) {
+      priceChart.candles.setMarkers([]);
+      state._shownMarks = 0; state._markName = null;
+      return;
+    }
+    const idx = playback ? playback.index : 0;
+    const count = countLE(track.marks, idx);   // # of marks whose axis-index <= idx
+    if (!force && track.name === state._markName && count === state._shownMarks) return;
+    priceChart.candles.setMarkers(track.marks.slice(0, count).map((x) => x.m));
+    state._shownMarks = count;
+    state._markName = track.name;
+  }
+
+  // Count of sorted marks whose axis index .i is <= idx (binary search).
+  function countLE(marks, idx) {
+    let lo = 0, hi = marks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (marks[mid].i <= idx) lo = mid + 1; else hi = mid;
+    }
+    return lo;
   }
 
   function populateMarkerSelect() {
@@ -338,8 +358,12 @@
       opt.value = n; opt.textContent = n;
       sel.appendChild(opt);
     }
-    // prefer a low-turnover default so the price chart isn't swamped with arrows
-    if (names.includes("buy_hold")) sel.value = "buy_hold";
+    // Default to the winner: "what the best strategy did" is the most interesting
+    // thing to watch reveal on the chart (you can switch via this dropdown or by
+    // clicking any leaderboard row). Falls back to buy_hold if there's no board.
+    const winner = (state.result.leaderboard || [])[0];
+    if (winner && names.includes(winner.name)) sel.value = winner.name;
+    else if (names.includes("buy_hold")) sel.value = "buy_hold";
   }
 
   function applyLogScale() {
@@ -366,23 +390,38 @@
     state.tracks = results.map((r, i) => {
       // cumulative trade count along the axis (so the live board can count up)
       const cum = new Array(state.axis.length).fill(0);
+      // buy/sell arrow markers tagged with their axis index, sorted, so they can
+      // be revealed in step with the playback clock (see renderMarkersUpTo).
+      const marks = [];
       for (const t of r.trades) {
         const ti = idxOf.get(t.date);
-        if (ti != null) cum[ti] += 1;
+        if (ti == null) continue;
+        cum[ti] += 1;
+        marks.push({ i: ti, m: {
+          time: t.date,
+          position: t.side === "BUY" ? "belowBar" : "aboveBar",
+          color: t.side === "BUY" ? "#3fb950" : "#f85149",
+          shape: t.side === "BUY" ? "arrowUp" : "arrowDown",
+          text: t.side === "BUY" ? "B" : "S",
+        } });
       }
       for (let k = 1; k < cum.length; k++) cum[k] += cum[k - 1];
+      marks.sort((a, b) => a.i - b.i);
       return {
         name: r.strategy,
         color: window.Arena.colorFor(i),
         pre: r.snapshots.map((s) => ({ time: s.date, value: s.pre_tax_value })),
         after: r.snapshots.map((s) => ({ time: s.date, value: s.after_tax_value })),
         cumTrades: cum,
+        marks,
         score: scoreOf.get(r.strategy),
       };
     });
 
     computeEquityRange();
     state._prevIndex = -1;
+    state._shownMarks = 0;
+    state._markName = null;
     playback.setLength(state.axis.length);
   }
 
@@ -454,7 +493,7 @@
         `<span class="trd"></span><span class="score"></span>`;
       row.addEventListener("click", () => {
         $("marker-strategy").value = t.name;
-        renderMarkers(t.name);
+        renderMarkersUpTo(true);
       });
       board.appendChild(row);
       state.rows.set(t.name, row);
@@ -482,8 +521,18 @@
     });
     state._prevIndex = index;
 
+    // Pin the equity x-axis to the WHOLE window on every seek (incl. the initial
+    // seek(0), lens switch, scrubber, jump-to-event). Seeking sets each series to a
+    // short slice, which would otherwise collapse the time scale to those few bars
+    // and re-expand jumpily; a fixed logical range keeps it stable left-to-right as
+    // the curves draw in. Ticks use update() (append), so they don't need it.
+    if (isSeek && state.axis.length) {
+      equityChart.chart.timeScale().setVisibleLogicalRange({ from: 0, to: state.axis.length - 1 });
+    }
+
     const date = state.axis[index];
     priceChart.overlay.setPlayhead(date);
+    renderMarkersUpTo(isSeek);   // reveal trades up to this frame (rebuild on seek)
     updateReadout(index, date);
     renderRaceFrame(index, lens);
   }

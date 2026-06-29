@@ -20,7 +20,7 @@
       this.length = 0;     // number of frames (= snapshots on the axis)
       this.index = 0;      // current frame, clamped to [0, length-1]
       this.playing = false;
-      this.speed = 60;     // simulated days per real second
+      this.speed = 25;     // simulated days per real second (UI default; raise to go faster)
       this._raf = null;
       this._lastTs = 0;
       this._acc = 0;       // accumulated fractional days
