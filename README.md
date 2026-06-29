@@ -70,31 +70,72 @@ risk-adjusted, low-churn returns rather than raw headline gains.
 
 ## Run
 
-With Docker:
+### Quickest — pulled image, zero setup
+
+The published image ships with a **baked-in market-data database**, so it runs out
+of the box — no clone, no build, no data fetch:
+
+```bash
+docker run -p 8000:8000 ghcr.io/nexor666/crypto-arena
+```
+
+Then open <http://localhost:8000> and check <http://localhost:8000/api/health>.
+The Hall of Fame starts empty and fills as you race. To keep your runs (and any
+data refresh) across container restarts, mount a volume:
+
+```bash
+docker run -p 8000:8000 -v arena-data:/app/data ghcr.io/nexor666/crypto-arena
+```
+
+### From source (Docker)
 
 ```bash
 docker compose up --build
 ```
 
-Then open <http://localhost:8000> and check <http://localhost:8000/api/health>.
+Builds the image locally (the build bakes a fresh data snapshot) and serves on
+<http://localhost:8000>. `data/` is bind-mounted and seeded on first start.
 
-Without Docker (local dev):
+### From source (local dev, no Docker)
 
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn backend.main:app --reload --port 8000
-```
-
-### Fetch data
-
-Populate the SQLite store from the public feeds (writes an immutable raw snapshot
-first, then upserts prices + indicators + Fear & Greed + MVRV):
+The data libraries live in `requirements.txt`; install them into a venv. Activate
+per your shell, **or** just call the venv's interpreter directly (shell-agnostic —
+works in bash, zsh and fish):
 
 ```bash
-python -m backend.data.refresh            # full pull
-python -m backend.data.refresh --status   # row counts + date ranges
+python -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/python -m backend.data.refresh        # populate the SQLite store first
+venv/bin/uvicorn backend.main:app --reload --port 8000
 ```
+
+<details><summary>Prefer to activate the venv?</summary>
+
+```bash
+source venv/bin/activate          # bash / zsh
+source venv/bin/activate.fish     # fish
+```
+</details>
+
+### Updating the market data
+
+The baked/seeded data is a snapshot from build time. To pull the latest prices,
+indicators, Fear & Greed and MVRV (writes an immutable raw snapshot first, then
+upserts), refresh in place — no rebuild needed:
+
+```bash
+# Running container (any of the above), or via the API:
+curl -X POST localhost:8000/api/admin/refresh
+docker exec crypto-arena python -m backend.data.refresh   # compose service name
+
+# Local dev:
+venv/bin/python -m backend.data.refresh            # full pull
+venv/bin/python -m backend.data.refresh --status   # row counts + date ranges
+```
+
+> Refreshes persist only if `/app/data` is on a mounted volume (compose does this;
+> for `docker run` add `-v arena-data:/app/data`). The published image is also
+> rebuilt weekly, so a freshly pulled image already carries recent data.
 
 ### Race strategies from the CLI
 
@@ -175,7 +216,9 @@ python -m pytest tests/ -q
 ```
 crypto-arena/
   docker-compose.yml
-  Dockerfile
+  Dockerfile               # bakes a fresh seed DB into the image at build time
+  docker-entrypoint.sh     # seeds /app/data on first boot (else live fetch)
+  .github/workflows/       # CI: build + publish the image to GHCR (weekly rebuild)
   requirements.txt
   data/              # SQLite db + raw cache (mounted volume, gitignored)
   backend/

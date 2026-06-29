@@ -1,5 +1,9 @@
 # Single service: builds the image and serves API + frontend on port 8000.
 # `data/` is bind-mounted so the SQLite db + raw cache survive container rebuilds.
+# On first start the entrypoint seeds this (empty) dir from the image's baked
+# database, so the app comes up with data even on a fresh clone — no manual fetch.
+# (To just *run* the published image without building, see the README: one
+#  `docker run ghcr.io/nexor666/crypto-arena` needs neither this file nor a clone.)
 services:
   arena:
     build: .
