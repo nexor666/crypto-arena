@@ -34,11 +34,24 @@
     const r = result.results.find((x) => x.strategy === top.name);
     state.winner = { strategy: top.name, params: r ? r.params : {} };
 
+    // Compute + persist the result now, but keep the winner card and validators
+    // HIDDEN until the race crosses the finish line — app.js calls revealWinner()
+    // then. The win is a payoff at the end, not a spoiler shown before you Play.
+    state._pending = { top, r };
+    $("winner-card").hidden = true;
+    $("validation").hidden = true;
+    refreshHallOfFame(result.settings_sig);
+  }
+
+  // Reveal the winner card + out-of-sample validators once the race has reached
+  // the finish (played to the end, or scrubbed there). Idempotent.
+  function revealWinner() {
+    if (!state._pending) return;
+    const { top, r } = state._pending;
     renderWinner(top, r);
     $("validation").hidden = false;
     $("validation-out").innerHTML =
-      `<p class="muted">Validate <strong>${top.name}</strong> — the current winner — on unseen data.</p>`;
-    refreshHallOfFame(result.settings_sig);
+      `<p class="muted">Validate <strong>${top.name}</strong> — the winner — on unseen data.</p>`;
   }
 
   // ---------------------------------------------------------------------------
@@ -334,5 +347,5 @@
   const money = (v) => (v == null ? "—" : `$${Math.round(v).toLocaleString("en-US")}`);
   const cls = (v) => (v == null ? "" : v >= 0 ? "pos" : "neg");
 
-  window.ArenaExtras = { init, onResult };
+  window.ArenaExtras = { init, onResult, revealWinner };
 })();

@@ -111,6 +111,16 @@
         </div>
       </div>
 
+      <!-- play-by-play: the overlaid strategy's trades, revealed as the race
+           reaches them (switch via the Trades selector above or a board row) -->
+      <div class="feed" id="feed" hidden>
+        <div class="feed-head">
+          <span>📋 Play-by-play</span>
+          <span class="muted">trades for <strong id="feed-strategy">—</strong> as the race reaches them</span>
+        </div>
+        <ul class="feed-list" id="feed-list"></ul>
+      </div>
+
       <div class="chart-head">
         <h2>Equity curves</h2>
         <div class="chart-controls">

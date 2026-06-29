@@ -345,3 +345,42 @@ button.play { width: auto; margin: 0; padding: 0.4rem 0.9rem; min-width: 92px; }
 .bar-val { text-align: right; font-variant-numeric: tabular-nums; }
 .bestline-svg { width: 100%; height: 90px; display: block; }
 .bestline-axis { display: flex; justify-content: space-between; margin-top: 0.2rem; }
+
+/* Stage 8 — Phase 2: play-by-play feed (the overlaid strategy's trades, revealed
+   in sync with the race) */
+.feed {
+  margin: 0.6rem 0 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.feed-head {
+  display: flex; align-items: baseline; gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.feed-head strong { color: var(--accent); font-weight: 600; }
+.feed-list {
+  list-style: none; margin: 0; padding: 0.2rem 0;
+  max-height: 132px; overflow-y: auto;
+  font-variant-numeric: tabular-nums;
+}
+.feed-row {
+  display: grid;
+  grid-template-columns: 5.8rem 2.6rem 10rem 1fr;
+  gap: 0.5rem; align-items: baseline;
+  padding: 0.12rem 0.6rem;
+  font-size: 0.8rem;
+  border-left: 2px solid transparent;
+}
+.feed-row .fd { color: var(--muted); }
+.feed-row .fs { font-weight: 700; }
+.feed-row .fr { font-size: 0.92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-row.buy { border-left-color: var(--pos); }
+.feed-row.buy .fs { color: var(--pos); }
+.feed-row.sell { border-left-color: var(--neg); }
+.feed-row.sell .fs { color: var(--neg); }
+.feed-row:first-child { animation: feed-flash 0.6s ease-out; }
+@keyframes feed-flash { from { background: rgba(247, 147, 26, 0.18); } to { background: transparent; } }
+.feed-empty { padding: 0.3rem 0.6rem; font-size: 0.8rem; }

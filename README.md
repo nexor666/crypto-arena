@@ -232,25 +232,31 @@ curl -s -X POST localhost:8000/api/backtest \
 
 ### Web UI (Stage 7 — the full game)
 
-With the app running (Docker or `uvicorn`), open <http://localhost:8000>. Pick an
-asset, date range, capital, fee and tax settings, tick the strategies to race
+With the app running (Docker or `uvicorn`), open <http://localhost:8000>. The dates
+default to the full window (2018 → latest data), so just tick the strategies to race
 (open ⚙ on any strategy to **tune its parameters** with sliders built from its
-declared schema), and hit **Run race**. The page calls `POST /api/backtest` *once*
-and then animates the whole result client-side — "compute once, animate in the
-browser", no streaming:
+declared schema) and hit **Run race**. The page calls `POST /api/backtest` *once* and
+then plays the whole thing back client-side — "compute once, animate in the browser",
+no streaming. It **starts at the starting line**: everyone tied at the opening
+capital and the charts blank, so pressing **Play** is a *reveal*, not a replay:
 
-- a **candlestick price chart** (log-scale) with the 200-Week MA, halving + cycle
-  vertical lines, bull/bear regime shading, a sweeping **playback cursor**, and the
-  selected strategy's buy/sell markers (pick which strategy's trades to overlay, or
-  click a leaderboard row);
-- a **transport bar** — Play/Pause, a timeline scrubber, a speed slider
-  (simulated days per second), a current-date + bull/bear cycle-phase readout, and
-  **jump-to-event** buttons (halvings, cycle tops/bottoms, COVID crash, latest);
+- a **candlestick price chart** (log-scale) whose candles, 200-Week MA, halving +
+  cycle lines and bull/bear regime shading **reveal in sync with the clock** — so you
+  discover how Bitcoin actually moved at the same moment as the bots, nothing ahead of
+  "now" given away. The selected strategy's **buy/sell arrows appear as the playhead
+  reaches each trade** (overlay defaults to the winner; switch via the Trades selector
+  or by clicking a leaderboard row);
+- a **play-by-play feed** — the overlaid strategy's trades scroll past with date,
+  side, size and the strategy's own reason as the race reaches them;
+- a **transport bar** — Play/Pause, a timeline scrubber, a speed slider (default
+  25 simulated days/sec, up to 400), a current-date + bull/bear cycle-phase readout,
+  and **jump-to-event** buttons (halvings, cycle tops/bottoms, COVID crash, latest);
 - a **multi-line equity chart** that **draws in over simulated time** (pre-/after-tax
   toggle, a clickable legend to show/hide lines, stable axis so it doesn't jump);
 - a **live leaderboard** that **re-orders** by each strategy's portfolio value at the
-  current day, topped by a **winner card** (best by after-tax `standardized_score`,
-  with alpha vs Buy & Hold, tax paid, max drawdown) and an **Export JSON** button;
+  current day; when the race crosses the **finish line** the **winner card** is
+  revealed (best by after-tax `standardized_score`, with alpha vs Buy & Hold, tax
+  paid, max drawdown) alongside an **Export JSON** button;
 - **Validate the winner** — one click runs **walk-forward** and **start-date
   robustness** and shows a robust/fragile verdict with per-fold / per-start detail;
 - a **persistent Hall of Fame** — a ranked table (expandable to each strategy's

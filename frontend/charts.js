@@ -23,9 +23,18 @@
       horzLines: { color: "rgba(139,148,158,0.08)" },
     },
     rightPriceScale: { borderColor: "rgba(139,148,158,0.25)" },
-    // minBarSpacing well below 1px so fitContent can show a full multi-year daily
-    // window (≈3100+ bars) instead of clipping to the rightmost few years.
-    timeScale: { borderColor: "rgba(139,148,158,0.25)", rightOffset: 4, minBarSpacing: 0.04 },
+    // minBarSpacing well below 1px so the view can show a full multi-year daily
+    // window (≈3100+ bars) instead of clipping to the rightmost few years. The two
+    // shift flags are OFF so the pinned full-window view does NOT drift as the
+    // race reveals candles into the whitespace (otherwise the action scrolls
+    // off-screen and you'd have to zoom/pan to find it).
+    timeScale: {
+      borderColor: "rgba(139,148,158,0.25)",
+      rightOffset: 0,
+      minBarSpacing: 0.04,
+      shiftVisibleRangeOnNewBar: false,
+      allowShiftVisibleRangeOnWhitespaceReplacement: false,
+    },
     crosshair: { mode: LWC.CrosshairMode.Normal },
     autoSize: false,
   };
@@ -87,22 +96,32 @@
         const h = scope.bitmapSize.height;
         const w = scope.bitmapSize.width;
 
+        // The playback playhead also acts as a reveal mask: nothing dated after it
+        // is drawn, and an in-progress band is clipped to it — so the regime shading
+        // and cycle/halving lines don't give away what's coming before you reach it.
+        const ph = this._playhead;
+        const phX = ph ? x(ph) : null;
+
         // bull/bear regime bands first (drawn underneath the lines)
         for (const band of this._bands) {
+          if (ph && band.from > ph) continue;   // band hasn't started yet
           let x1 = x(band.from);
           let x2 = x(band.to);
-          if (x1 === null && x2 === null) continue;
+          if (x1 === null && x2 === null && phX === null) continue;
           // clamp an off-screen edge to the visible bounds so the band still shows
           if (x1 === null) x1 = 0;
           if (x2 === null) x2 = w / hr;
+          // clip the right edge to the playhead so the future regime stays hidden
+          if (phX !== null && x2 > phX) x2 = phX;
           const bx1 = Math.round(x1 * hr);
           const bx2 = Math.round(x2 * hr);
           ctx.fillStyle = band.color;
           ctx.fillRect(Math.min(bx1, bx2), 0, Math.abs(bx2 - bx1), h);
         }
 
-        // halving / cycle vertical lines
+        // halving / cycle vertical lines (only those already reached)
         for (const line of this._lines) {
+          if (ph && line.time > ph) continue;   // event not reached yet
           const c = x(line.time);
           if (c === null) continue;
           const bx = Math.round(c * hr) + 0.5;
