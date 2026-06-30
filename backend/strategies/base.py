@@ -105,6 +105,16 @@ class Strategy(ABC):
     universe: str = "single"               # "single" | "rotation"
     param_schema: dict[str, ParamSpec] = {}
 
+    # -- transparency metadata (Stage 9) ------------------------------------
+    # A plain-English window into the strategy so the UI can explain it without
+    # anyone reading code. ``triggering`` is the level/edge/scheduled distinction
+    # that explains why some strategies rack up huge trade counts ("acts every day
+    # the condition holds") and others trade rarely.
+    thesis: str = ""                        # what it does / why, in one or two sentences
+    rule: str = ""                          # the exact entry/exit rule at default params
+    triggering: str = "level"               # "level" | "edge" | "scheduled"
+    reads: tuple[str, ...] = ()             # the data/indicator inputs it consults
+
     @abstractmethod
     def decide(
         self,
@@ -140,6 +150,16 @@ class Strategy(ABC):
             spec = cls.param_schema[key]
             params[key] = int(value) if spec.type == "int" else float(value)
         return params
+
+    @classmethod
+    def info_json(cls) -> dict[str, Any]:
+        """The plain-English transparency block for the UI (Stage 9)."""
+        return {
+            "thesis": cls.thesis,
+            "rule": cls.rule,
+            "triggering": cls.triggering,
+            "reads": list(cls.reads),
+        }
 
     @classmethod
     def schema_json(cls) -> dict[str, Any]:

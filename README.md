@@ -28,10 +28,14 @@ config** — backed by a persistent Hall of Fame that accumulates across session
 | 6 | The race — playback + live-reordering leaderboard | ✅ |
 | 7 | Polish — param sliders, winner card, JSON export, persistent Hall of Fame, walk-forward + robustness | ✅ |
 | 8 | Grid-search auto-tuner — per-strategy params optimized **out-of-sample** | ✅ |
+| 9 | Strategy transparency — plain-English info panels + data-source provenance | ✅ |
+| 10 | "Cycle Ratchet" strategy (scale out on new highs / in on new lows, gated to halving phase) + gradual-scaling defaults | 🔜 planned |
+| 11 | Custom-strategy builder (declarative rule DSL, no code) + MACD indicator | 🔜 planned |
+| 12 | UX & quality batch + more assets | 🔜 planned |
 
 **MVP cut line reached at Stage 3:** the CLI can already answer "which strategy
 wins" over real history. Stages 4+ add the JSON API and the visual game. As of
-Stage 8 the browser UI at <http://localhost:8000> is the complete loop:
+Stage 9 the browser UI at <http://localhost:8000> is the complete loop:
 
 - **race** all strategies with **per-strategy parameter sliders** (built from each
   strategy's declared schema) and animated playback (scrubber, play/pause, speed,
@@ -55,7 +59,13 @@ Stage 8 the browser UI at <http://localhost:8000> is the complete loop:
   judged on, which would just maximize overfitting), drops the best params straight
   into the sliders, and tells you honestly whether they actually **beat the
   hand-picked defaults on an untouched hold-out window** (the answer is allowed to be
-  "no" — a strategy with no real edge can't be tuned into one).
+  "no" — a strategy with no real edge can't be tuned into one);
+- **full transparency** (Stage 9) — every strategy has an ⓘ info panel that explains,
+  in plain English, what it does, its exact rule, whether it's **level-triggered**
+  (acts every day its condition holds — why some trade counts get large),
+  **edge-triggered** (acts once when its signal flips) or **scheduled**, and which data
+  it reads; plus a "where does the data come from?" note listing each source
+  (provider + live coverage window), so nothing is a black box.
 
 **Strategies (9, auto-discovered plugins, each with a declared param schema):**
 Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
@@ -216,8 +226,9 @@ python -m backend.engine.run --golden     # Buy & Hold (fee=0) == raw price retu
 | `GET /api/health` | Liveness + current stage |
 | `GET /api/data/status` | Store row counts + date ranges |
 | `GET /api/price-data/{asset}` | OHLCV + indicators for one asset |
-| `GET /api/strategies` | Strategy registry + each one's parameter schema |
+| `GET /api/strategies` | Strategy registry + each one's parameter schema + plain-English info block (thesis, rule, level/edge/scheduled, inputs) |
 | `GET /api/events` | Halving dates + notable cycle tops/bottoms |
+| `GET /api/data-sources` | Data provenance (provider + scope) merged with live coverage windows |
 | `POST /api/backtest` | Race selected strategies → full per-day equity + trades + metrics + leaderboard (and append each to the runs ledger) |
 | `GET /api/hall-of-fame` | Persistent ledger ranked for one settings signature (best score, configs, times-tried, best-over-time) |
 | `POST /api/walk-forward` | Walk-forward validate one strategy: tune in-sample → score out-of-sample, roll forward |
@@ -242,12 +253,12 @@ curl -s -X POST localhost:8000/api/auto-tune \
   -d '{"asset":"BTC","start":"2018-01-01","strategy":"mayer","n_folds":3}'
 ```
 
-### Web UI (Stage 8 — the full game)
+### Web UI (Stage 9 — the full game)
 
 With the app running (Docker or `uvicorn`), open <http://localhost:8000>. The dates
 default to the full window (2018 → latest data), so just tick the strategies to race
-(open ⚙ on any strategy to **tune its parameters** with sliders built from its
-declared schema) and hit **Run race**. The page calls `POST /api/backtest` *once* and
+(open ⓘ on any strategy to read **what it does** in plain English, or ⚙ to **tune its
+parameters** with sliders built from its declared schema) and hit **Run race**. The page calls `POST /api/backtest` *once* and
 then plays the whole thing back client-side — "compute once, animate in the browser",
 no streaming. It **starts at the starting line**: everyone tied at the opening
 capital and the charts blank, so pressing **Play** is a *reveal*, not a replay:
@@ -277,7 +288,10 @@ capital and the charts blank, so pressing **Play** is a *reveal*, not a replay:
   the answer is "no");
 - a **persistent Hall of Fame** — a ranked table (expandable to each strategy's
   configs, times-tried, margins), a ranked-score bar chart, and a best-score-over-time
-  line that grows as you experiment across sessions.
+  line that grows as you experiment across sessions;
+- an ⓘ **info panel** on every strategy (plain-English thesis, exact rule,
+  level/edge/scheduled triggering, and the data it reads) plus a **"where does the data
+  come from?"** note — so no strategy and no number is a black box.
 
 Charts are [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)
 (MIT), loaded from a CDN — no build step.

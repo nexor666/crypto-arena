@@ -44,6 +44,18 @@ def _days_since_last_halving(today: str) -> int | None:
 class HalvingCycle(Strategy):
     name = "halving"
     description = "Time accumulate/distribute windows off days-since-halving."
+    thesis = (
+        "Bets on Bitcoin's ~4-year halving rhythm: accumulate in the late bear before a "
+        "halving, distribute in the bull roughly a year after one. It keys only to the "
+        "publicly-known halving dates, so there is no hindsight in the timing."
+    )
+    rule = (
+        "Sell a fraction each day from ~400–600 days after a halving (the typical top); "
+        "buy a fraction each day from ~950–1500 days after (the late-bear bottom before "
+        "the next halving). All windows tunable."
+    )
+    triggering = "level"  # acts every day inside an accumulate/distribute window
+    reads = ("the public halving schedule (days since last halving)",)
     universe = "single"
 
     param_schema = {

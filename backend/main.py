@@ -134,6 +134,7 @@ def strategies() -> dict:
             "name": name,
             "description": cls.description,
             "universe": cls.universe,
+            "info": cls.info_json(),          # Stage 9: plain-English transparency block
             "param_schema": cls.schema_json(),
             "default_params": cls.default_params(),
         })
@@ -153,6 +154,45 @@ def events() -> dict:
         for i, d in enumerate(config.HALVING_DATES)
     ]
     return {"halvings": halvings, "notable": config.NOTABLE_EVENTS}
+
+
+def _coverage_text(source_id: str, status: dict) -> str:
+    """A human one-liner of how much data is currently loaded for a source."""
+    if source_id == "prices":
+        parts = [
+            f"{asset} {c['start']}→{c['end']} ({c['rows']:,}d)"
+            for asset, c in sorted((status.get("prices") or {}).items())
+            if c.get("rows")
+        ]
+        return " · ".join(parts) or "not loaded"
+    if source_id == "sentiment":
+        c = status.get("sentiment") or {}
+        return f"{c['start']}→{c['end']} ({c['rows']:,} days)" if c.get("rows") else "not loaded"
+    if source_id == "onchain":
+        oc = status.get("onchain") or {}
+        parts = [
+            f"{metric} {c['start']}→{c['end']} ({c['rows']:,}d)"
+            for metric, c in oc.items() if c.get("rows")
+        ]
+        return " · ".join(parts) or "not currently loaded (optional, BTC-only)"
+    return ""
+
+
+@app.get("/api/data-sources")
+def data_sources() -> dict:
+    """Where the data comes from + how much is loaded right now (Stage 9 transparency).
+
+    Static provenance from ``config.DATA_SOURCES`` merged with the live coverage
+    window for each source, so the UI can show — in plain language — exactly what
+    feeds the strategies and where it originated.
+    """
+    store.init_schema()
+    st = store.status()
+    sources = [
+        {**src, "coverage": _coverage_text(src["id"], st)}
+        for src in config.DATA_SOURCES
+    ]
+    return {"last_refresh": st.get("last_refresh"), "sources": sources}
 
 
 class StrategySelection(BaseModel):

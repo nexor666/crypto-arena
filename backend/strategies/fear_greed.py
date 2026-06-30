@@ -19,6 +19,17 @@ class FearGreed(Strategy):
     name = "fear_greed"
     description = "Buy extreme fear, trim extreme greed (Fear & Greed index)."
     universe = "single"
+    thesis = (
+        "A contrarian sentiment play: buy when the crowd is fearful, trim when it's "
+        "greedy. Included mainly as a foil — a test of whether trading on sentiment "
+        "actually beats simply holding once the extra fees and tax are paid."
+    )
+    rule = (
+        "When the Fear & Greed index is ≤ 25 (extreme fear), buy 50% of available cash. "
+        "When it's ≥ 75 (extreme greed), sell 50% of the holding. All thresholds tunable."
+    )
+    triggering = "level"  # acts every day the index is in the buy/sell zone
+    reads = ("Fear & Greed index",)
 
     param_schema = {
         "buy_below": ParamSpec(

@@ -22,6 +22,18 @@ class MaCrossover(Strategy):
     name = "ma_cross"
     description = "Long while 50D-MA > 200D-MA (golden cross), cash while below."
     universe = "single"
+    thesis = (
+        "The classic trend filter: ride the asset while its 50-day MA is above its "
+        "200-day MA (a golden cross), and step aside to cash when it falls below (a death "
+        "cross). A foil for whether trend-timing beats simply holding."
+    )
+    rule = (
+        "Go 100% long on a golden cross (50-day MA > 200-day MA); go 100% to cash on a "
+        "death cross. An optional confirm-days delay damps whipsaw. The 50/200 windows "
+        "are fixed."
+    )
+    triggering = "edge"  # acts only when the crossover flips — fully long or fully cash
+    reads = ("50-day moving average", "200-day moving average")
 
     param_schema = {
         "confirm_days": ParamSpec(

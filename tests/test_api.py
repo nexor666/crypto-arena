@@ -79,10 +79,40 @@ def test_strategies_lists_registry_with_schema():
     assert names == set(reg)
     # Each entry carries the contract fields the frontend builds controls from.
     for s in body["strategies"]:
-        assert set(s) >= {"name", "description", "universe", "param_schema", "default_params"}
+        assert set(s) >= {"name", "description", "universe", "info", "param_schema", "default_params"}
         for key, spec in s["param_schema"].items():
             assert set(spec) >= {"min", "max", "step", "default", "type", "label"}
             assert spec["min"] <= spec["default"] <= spec["max"]
+
+
+# ---------------------------------------------------------------------------
+# Stage 9 — strategy transparency + data sources
+# ---------------------------------------------------------------------------
+def test_strategies_carry_transparency_info():
+    body = client.get("/api/strategies").json()
+    for s in body["strategies"]:
+        info = s["info"]
+        assert set(info) >= {"thesis", "rule", "triggering", "reads"}
+        # every strategy explains itself in plain language — no code-reading required
+        assert info["thesis"].strip(), f"{s['name']} has no thesis"
+        assert info["rule"].strip(), f"{s['name']} has no rule"
+        assert info["triggering"] in {"level", "edge", "scheduled"}
+        assert isinstance(info["reads"], list)
+    # the level/edge distinction that explains the "huge trade count" puzzle is present
+    by = {s["name"]: s["info"]["triggering"] for s in body["strategies"]}
+    assert by["fear_greed"] == "level"      # acts every day in-zone → many trades
+    assert by["buy_hold"] == "edge"         # acts once, then holds
+    assert by["rebalance"] == "scheduled"   # fixed cadence
+
+
+def test_data_sources_shape_and_coverage(monkeypatch):
+    body = client.get("/api/data-sources").json()
+    assert "sources" in body and len(body["sources"]) == 3
+    ids = {s["id"] for s in body["sources"]}
+    assert ids == {"prices", "sentiment", "onchain"}
+    for s in body["sources"]:
+        assert set(s) >= {"id", "name", "provider", "scope", "note", "coverage"}
+        assert s["provider"].strip() and s["coverage"].strip()
 
 
 # ---------------------------------------------------------------------------

@@ -134,6 +134,48 @@ label.strat { display: flex !important; align-items: center; }
 }
 
 /* Stage-8 auto-tuner controls (inside each strategy's param panel) */
+/* Stage-9 transparency: per-strategy info panel */
+.info-toggle, .param-toggle {
+  background: none; border: none; cursor: pointer; padding: 0 0.15rem;
+  color: var(--muted); font-size: 0.9rem;
+}
+.info-toggle:hover { color: var(--accent); }
+.strat-info {
+  margin: 0.1rem 0 0.5rem 1.4rem; padding: 0.5rem 0.65rem;
+  border-left: 2px solid var(--accent); background: rgba(247,147,26,0.05);
+  border-radius: 0 4px 4px 0; font-size: 0.8rem; line-height: 1.45;
+}
+.strat-info p { margin: 0.3rem 0; }
+.strat-info .si-thesis { color: var(--fg); }
+.si-key {
+  display: inline-block; min-width: 3.2rem; color: var(--muted);
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.trig {
+  display: inline-block; padding: 0.02rem 0.4rem; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 600; border: 1px solid var(--border);
+}
+.trig.level { color: var(--neg); border-color: var(--neg); }
+.trig.edge { color: var(--pos); border-color: var(--pos); }
+.trig.scheduled { color: var(--accent); border-color: var(--accent); }
+.strat-info .chip {
+  display: inline-block; padding: 0.02rem 0.4rem; margin: 0.05rem 0.1rem 0 0;
+  border-radius: 4px; background: var(--bg); border: 1px solid var(--border);
+  font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+
+/* Stage-9 "where does the data come from" note */
+.data-sources { margin-top: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.6rem; }
+.data-sources > summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
+.data-sources > summary:hover { text-decoration: underline; }
+#data-sources-body { margin-top: 0.5rem; }
+.ds-row { padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+.ds-row:last-child { border-bottom: none; }
+.ds-name { color: var(--fg); font-weight: 600; font-size: 0.82rem; }
+.ds-prov { font-size: 0.74rem; color: var(--muted); }
+.ds-cov { font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.ds-note { font-size: 0.72rem; margin-top: 0.15rem; }
+
 .param-tune { margin-top: 0.5rem; border-top: 1px dashed var(--border); padding-top: 0.45rem; }
 .tune-btn {
   background: transparent; border: 1px solid var(--accent); color: var(--accent);

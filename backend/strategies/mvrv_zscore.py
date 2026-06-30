@@ -26,6 +26,18 @@ class MvrvZScore(Strategy):
     name = "mvrv_z"
     description = "Accumulate when MVRV Z-Score < 0, distribute when > 7 (BTC-only)."
     universe = "single"
+    thesis = (
+        "An on-chain valuation gauge (Bitcoin only): it compares the market price to the "
+        "network's aggregate cost basis. Deeply negative means price is below what the "
+        "average holder paid — historically capitulation value; very high means euphoria."
+    )
+    rule = (
+        "Buy 50% of cash when the MVRV Z-Score is ≤ 0; sell 50% of the holding when it is "
+        "≥ 7. BTC only — it sits in cash on other coins, or if the on-chain series isn't "
+        "loaded. Thresholds tunable."
+    )
+    triggering = "level"  # acts every day the Z-Score is in the buy/sell zone
+    reads = ("MVRV Z-Score (on-chain)",)
 
     param_schema = {
         "buy_below": ParamSpec(

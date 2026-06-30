@@ -39,7 +39,7 @@
     playback = new window.Arena.Playback({ onTick: applyFrame, onState: onPlayState });
 
     checkHealth();
-    await Promise.all([loadStrategies(), loadEvents(), setDefaultDates()]);
+    await Promise.all([loadStrategies(), loadEvents(), setDefaultDates(), loadDataSources()]);
 
     $("run").addEventListener("click", runBacktest);
     $("select-all").addEventListener("click", () => toggleAll(true));
@@ -110,8 +110,18 @@
         label.innerHTML =
           `<input type="checkbox" value="${s.name}" checked /> ` +
           `${s.name} <span class="muted">(${s.universe})</span>` +
+          ` <button type="button" class="info-toggle" title="what it does">ⓘ</button>` +
           (hasParams ? ` <button type="button" class="param-toggle" title="parameters">⚙</button>` : "");
         wrap.appendChild(label);
+
+        // Stage-9 transparency: a plain-English info panel (what it does, the exact
+        // rule, whether it's level/edge/scheduled, and which data it reads).
+        const info = buildInfoPanel(s);
+        wrap.appendChild(info);
+        label.querySelector(".info-toggle").addEventListener("click", (e) => {
+          e.preventDefault();
+          info.hidden = !info.hidden;
+        });
 
         // Per-strategy parameter sliders, built straight from the declared schema
         // (plan modularity principle 1) — collapsed by default to keep the panel tidy.
@@ -156,6 +166,68 @@
     } catch (err) {
       box.innerHTML = `<legend>Strategies</legend><p class="err">failed: ${err.message}</p>`;
     }
+  }
+
+  // Stage-9 transparency panel for one strategy, built from its served `info`.
+  function buildInfoPanel(s) {
+    const info = s.info || {};
+    const panel = document.createElement("div");
+    panel.className = "strat-info";
+    panel.hidden = true;
+    const trig = triggeringInfo(info.triggering);
+    const reads = (info.reads && info.reads.length)
+      ? info.reads.map((r) => `<span class="chip">${esc(r)}</span>`).join(" ")
+      : `<span class="muted">price only</span>`;
+    panel.innerHTML =
+      (info.thesis ? `<p class="si-thesis">${esc(info.thesis)}</p>` : "") +
+      (info.rule ? `<p><span class="si-key">Rule</span> ${esc(info.rule)}</p>` : "") +
+      `<p><span class="si-key">Trades</span> ` +
+        `<span class="trig ${info.triggering || ""}">${trig.label}</span> ` +
+        `<span class="muted">${trig.note}</span></p>` +
+      `<p><span class="si-key">Reads</span> ${reads}</p>`;
+    return panel;
+  }
+
+  // The level/edge/scheduled distinction — this is what explains why some
+  // strategies rack up huge trade counts and others barely trade.
+  function triggeringInfo(t) {
+    switch (t) {
+      case "edge":
+        return { label: "edge-triggered",
+          note: "acts once when its signal flips, then holds — few trades." };
+      case "scheduled":
+        return { label: "scheduled",
+          note: "only checks on a fixed calendar cadence." };
+      case "level":
+      default:
+        return { label: "level-triggered",
+          note: "acts every day its condition holds, so a long stretch in the zone makes many trades." };
+    }
+  }
+
+  // Stage-9 "where does the data come from" note (provenance + live coverage).
+  async function loadDataSources() {
+    const box = $("data-sources-body");
+    if (!box) return;
+    try {
+      const data = await (await fetch("/api/data-sources")).json();
+      const rows = (data.sources || []).map((src) =>
+        `<div class="ds-row"><div class="ds-name">${esc(src.name)}</div>` +
+        `<div class="ds-prov">${esc(src.provider)} · ${esc(src.scope)}</div>` +
+        `<div class="ds-cov muted">${esc(src.coverage)}</div>` +
+        `<div class="ds-note muted">${esc(src.note)}</div></div>`).join("");
+      const refreshed = data.last_refresh
+        ? `<p class="muted tiny">Data last refreshed ${esc(String(data.last_refresh).slice(0, 10))}. ` +
+          `Indicators are computed locally from prices — no look-ahead.</p>` : "";
+      box.innerHTML = rows + refreshed;
+    } catch (err) {
+      box.innerHTML = `<p class="err">data sources unavailable: ${esc(err.message)}</p>`;
+    }
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // smallest sensible decimal count to display a slider step (0.05 -> 2, 1 -> 0)

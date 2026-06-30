@@ -18,6 +18,17 @@ class MayerMultiple(Strategy):
     name = "mayer"
     description = "Buy when Mayer Multiple (price/200D-MA) < 1.0, sell when > 2.4."
     universe = "single"
+    thesis = (
+        "The same value idea on a daily timeframe. The Mayer Multiple is price ÷ the "
+        "200-day MA: below ~1 has historically been cheap, above ~2.4 historically "
+        "frothy and overextended."
+    )
+    rule = (
+        "Buy 50% of cash when the Mayer Multiple is ≤ 1.0; sell 50% of the holding when "
+        "it is ≥ 2.4. Thresholds and sizes tunable."
+    )
+    triggering = "level"  # acts every day the multiple is in the buy/sell zone
+    reads = ("Mayer Multiple (price ÷ 200-day MA)",)
 
     param_schema = {
         "buy_below": ParamSpec(

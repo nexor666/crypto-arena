@@ -88,3 +88,44 @@ NOTABLE_EVENTS: list[dict] = [
     {"date": "2021-11-10", "label": "2021 top", "kind": "top"},
     {"date": "2022-11-21", "label": "2022 bottom", "kind": "bottom"},
 ]
+
+# ---------------------------------------------------------------------------
+# Data sources — the provenance note surfaced by Stage 9 (/api/data-sources).
+# Static provenance (provider + scope); live coverage windows are merged in at
+# request time from the store's status(). All public market data — no secrets.
+# ---------------------------------------------------------------------------
+DATA_SOURCES: list[dict] = [
+    {
+        "id": "prices",
+        "name": "Price & volume (OHLCV)",
+        "provider": "Yahoo Finance (via yfinance)",
+        "scope": "BTC, ETH, BNB — daily",
+        "note": (
+            "Daily open/high/low/close/volume. All indicators (moving averages, "
+            "Mayer Multiple, RSI) are computed locally from these, point-in-time, "
+            "with no look-ahead."
+        ),
+    },
+    {
+        "id": "sentiment",
+        "name": "Fear & Greed index",
+        "provider": "alternative.me",
+        "scope": "market-wide — daily",
+        "note": (
+            "A 0–100 crowd-sentiment gauge (0 = extreme fear, 100 = extreme greed). "
+            "It begins in Feb 2018 — which is why the default analysis window starts "
+            "in 2018, so every strategy has full data coverage."
+        ),
+    },
+    {
+        "id": "onchain",
+        "name": "MVRV Z-Score (on-chain)",
+        "provider": "BGeometrics (bitcoin-data.com)",
+        "scope": "BTC only — optional",
+        "note": (
+            "Compares market value to realized (on-chain cost-basis) value. The free "
+            "tier is limited and on-chain history can be revised after the fact, so "
+            "treat MVRV results with extra skepticism."
+        ),
+    },
+]

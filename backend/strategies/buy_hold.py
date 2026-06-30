@@ -20,6 +20,17 @@ class BuyHold(Strategy):
     name = "buy_hold"
     description = "Deploy all capital into the asset and hold (benchmark)."
     universe = "single"
+    thesis = (
+        "The benchmark everything else must beat: own the asset for the whole window "
+        "and do nothing. If a cleverer strategy can't beat simply holding — after fees "
+        "and tax — it isn't worth the effort or the risk."
+    )
+    rule = (
+        "Deploy 100% of capital on the first day and never sell. "
+        "(Optional: spread the initial buy over N weeks to smooth entry-date luck.)"
+    )
+    triggering = "edge"  # buys once on day one, then holds forever
+    reads = ("price only",)
 
     param_schema = {
         "spread_weeks": ParamSpec(

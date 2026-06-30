@@ -26,6 +26,17 @@ class Rebalance(Strategy):
     name = "rebalance"
     description = "Hold a target coin/cash mix; rebalance to it periodically."
     universe = "single"
+    thesis = (
+        "A constant-mix rule: hold a fixed coin/cash split and periodically trim winners / "
+        "top up losers back to the target. It mechanically sells strength and buys "
+        "weakness — the opposite of trend-following — to harvest volatility."
+    )
+    rule = (
+        "Every 30 days, if the coin's weight has drifted more than 5 points from the 60% "
+        "target, trade back to target. Tunable; single-coin ↔ cash for now."
+    )
+    triggering = "scheduled"  # only checks on the fixed N-day cadence
+    reads = ("price",)
 
     param_schema = {
         "target_weight": ParamSpec(

@@ -20,6 +20,17 @@ class TwoHundredWeekMA(Strategy):
     name = "200w_ma"
     description = "Accumulate at/below the 200-week MA, distribute far above it."
     universe = "single"
+    thesis = (
+        "Treats the 200-week moving average as Bitcoin's long-term floor: historically "
+        "price near or below it has marked generational bottoms, and price stretched to "
+        "a high multiple of it has marked tops. A low-turnover value approach."
+    )
+    rule = (
+        "When price is ≤ 1.0× the 200-week MA, buy 50% of cash. When price is ≥ 3.0× the "
+        "200-week MA, sell 50% of the holding. Thresholds and sizes tunable."
+    )
+    triggering = "level"  # acts every day price is in the buy/sell zone
+    reads = ("price", "200-week moving average")
 
     param_schema = {
         "buy_below_ratio": ParamSpec(

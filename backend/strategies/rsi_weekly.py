@@ -19,6 +19,17 @@ class RsiWeekly(Strategy):
     name = "rsi_weekly"
     description = "Accumulate when weekly RSI(14) is oversold, trim when overbought."
     universe = "single"
+    thesis = (
+        "Momentum mean-reversion on a slow timeframe: accumulate when the weekly RSI is "
+        "oversold, trim when it is overbought. Using the weekly (not daily) RSI keeps it "
+        "in the cycle lane rather than reacting to daily noise."
+    )
+    rule = (
+        "Buy 50% of cash when the weekly RSI(14) is ≤ 30 (oversold); sell 50% of the "
+        "holding when it is ≥ 70 (overbought). Thresholds and sizes tunable."
+    )
+    triggering = "level"  # acts every day the weekly RSI is oversold/overbought
+    reads = ("weekly RSI(14)",)
 
     param_schema = {
         "buy_below": ParamSpec(
