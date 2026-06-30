@@ -3,88 +3,44 @@
 A backtesting "game" that races long-term crypto trading strategies against each
 other through real historical price data (BTC / ETH / BNB, daily), visualised as
 a live race across full bull/bear cycles. You tune strategy parameters, watch
-them compete, and discover **which strategy actually wins** by a risk-adjusted,
-after-tax, walk-forward-validated definition — then export the winner's config as
-a clean JSON artifact for a future live-trading bot.
+them compete, and discover **which strategy actually wins** — by a risk-adjusted,
+after-tax, walk-forward-validated measure, not just raw return — then export the
+winner's config as a clean JSON file for a future live-trading bot.
 
-**Scope:** the game only (backtesting + visualisation). No live trading, no
-exchange keys, no real money. Focus is long-term halving-cycle strategies, not
-day trading.
+**Scope:** the game only — backtesting + visualisation. No live trading, no exchange
+keys, no real money. Focus is long-term halving-cycle strategies, not day trading.
 
-## Status
+![The arena: the price chart reveals each strategy's buy/sell markers across full halving cycles, with a live leaderboard and a play-by-play feed.](docs/screenshot.png)
 
-The build is staged; the core engine + API are complete and the web UI is the full
-game — **race, tune, declare a winner, validate it out-of-sample, and export its
-config** — backed by a persistent Hall of Fame that accumulates across sessions.
+## What you get
 
-| Stage | What | State |
-|------:|------|:-----:|
-| 0 | Scaffolding & Docker (FastAPI + static frontend + health) | ✅ |
-| 1 | Data layer (yfinance OHLCV, Fear & Greed, MVRV → SQLite; indicators; immutable raw snapshots) | ✅ |
-| 2 | Backtest engine core (per-lot portfolio, HPFU tax lens, no-look-ahead daily loop, metrics) | ✅ |
-| 3 | Full strategy library — 9 strategies + CLI leaderboard | ✅ **(MVP cut line)** |
-| 4 | API layer (`/api/strategies`, `/api/events`, `POST /api/backtest`) | ✅ |
-| 5 | Frontend core — static price + equity charts | ✅ |
-| 6 | The race — playback + live-reordering leaderboard | ✅ |
-| 7 | Polish — param sliders, winner card, JSON export, persistent Hall of Fame, walk-forward + robustness | ✅ |
-| 8 | Grid-search auto-tuner — per-strategy params optimized **out-of-sample** | ✅ |
-| 9 | Strategy transparency — plain-English info panels + data-source provenance | ✅ |
-| 10 | "Cycle Ratchet" strategy (scale out on new highs / in on new lows, gated to halving phase) + gradual-scaling defaults | 🔜 planned |
-| 11 | Custom-strategy builder (declarative rule DSL, no code) + MACD indicator | 🔜 planned |
-| 12 | UX & quality batch + more assets | 🔜 planned |
+- Race **9 built-in strategies** across 2018 → today and watch the leaderboard
+  shuffle live as the cycles play out.
+- See **exactly when each strategy bought and sold**, drawn onto the price chart as
+  the race unfolds.
+- A **winner** is picked by risk-adjusted, after-fee, after-tax performance — so a
+  strategy that just got lucky in one bull run doesn't win by default.
+- **Validate** that winner on data it never saw (walk-forward + different start
+  dates), so you aren't fooled by curve-fitting.
+- **Auto-tune** any strategy's settings, and **export** the winning setup as JSON.
+- Every strategy explains, in plain English, **what it does and where its data comes
+  from** — nothing is a black box.
 
-**MVP cut line reached at Stage 3:** the CLI can already answer "which strategy
-wins" over real history. Stages 4+ add the JSON API and the visual game. As of
-Stage 9 the browser UI at <http://localhost:8000> is the complete loop:
+> Curious how it's built or what's coming next? See the [roadmap & build log](ROADMAP.md).
 
-- **race** all strategies with **per-strategy parameter sliders** (built from each
-  strategy's declared schema) and animated playback (scrubber, play/pause, speed,
-  jump-to-event, a price-chart playhead, equity curves that draw in, a live
-  re-ranking leaderboard) — Stages 5–6;
-- a **winner card** that declares the best strategy by the after-tax, risk-adjusted
-  `standardized_score` (not raw return), with alpha vs Buy & Hold, tax paid and max
-  drawdown, plus a one-click **export of the winner's config as a JSON artifact**
-  (the bridge to a future live bot);
-- a **persistent Hall of Fame** — every backtest appends to a `runs` ledger, and a
-  ranked table (expandable to each strategy's individual configs, with a times-tried
-  counter and margins over the next strategy / Buy & Hold) shows the standings for
-  the current settings, alongside a ranked-score bar chart and a best-score-over-time
-  line as the meta-game accumulates;
-- two **out-of-sample honesty checks** — **walk-forward** (tune params on each fold's
-  past, score its untouched future, roll forward) and **start-date robustness**
-  (re-run from several entry dates) — each returning a robust/fragile verdict so a
-  curve-fit "winner" is caught before it's trusted;
-- a per-strategy **grid-search auto-tuner** (Stage 8) — one ✨ click brute-forces a
-  parameter grid scored only on **out-of-sample** windows (never the data it'll be
-  judged on, which would just maximize overfitting), drops the best params straight
-  into the sliders, and tells you honestly whether they actually **beat the
-  hand-picked defaults on an untouched hold-out window** (the answer is allowed to be
-  "no" — a strategy with no real edge can't be tuned into one);
-- **full transparency** (Stage 9) — every strategy has an ⓘ info panel that explains,
-  in plain English, what it does, its exact rule, whether it's **level-triggered**
-  (acts every day its condition holds — why some trade counts get large),
-  **edge-triggered** (acts once when its signal flips) or **scheduled**, and which data
-  it reads; plus a "where does the data come from?" note listing each source
-  (provider + live coverage window), so nothing is a black box.
+## Quick start
 
-**Strategies (9, auto-discovered plugins, each with a declared param schema):**
-Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
-Halving Cycle Timing, MA Crossover (50/200), Weekly RSI, Periodic Rebalance.
+If you already have [Docker](https://www.docker.com/), one command runs everything
+(the image ships with a market-data database baked in):
 
-Every strategy is run after-fee and (optionally) after-tax — Norwegian 22% on
-realized gains with HPFU lot ordering, fully configurable/removable — and ranked
-by a `standardized_score` (after-tax Calmar − turnover penalty) that rewards
-risk-adjusted, low-churn returns rather than raw headline gains.
+```bash
+docker run -p 8000:8000 ghcr.io/nexor666/crypto-arena
+```
 
-## Tech stack
+Then open **<http://localhost:8000>**. Press `Ctrl+C` to stop. Never used Docker
+before? The step-by-step guide below walks you through it from scratch.
 
-- **Backend:** Python 3.12 + FastAPI (serves the JSON API and the static frontend)
-- **Data/cache:** SQLite (prices, indicators, Fear & Greed, MVRV)
-- **Engine:** custom, pandas-backed daily loop with strict no-look-ahead
-- **Frontend:** plain HTML/CSS/vanilla JS + TradingView Lightweight Charts
-- **Container:** Docker / docker-compose, single image, one port
-
-## Run
+## Run (full guide)
 
 **New to all this? Don't worry — this section assumes zero prior setup.** There are
 two ways to run the app; pick one:
@@ -208,7 +164,20 @@ venv/bin/python -m backend.data.refresh --status   # row counts + date ranges
 > for `docker run` add `-v arena-data:/app/data`). The published image is also
 > rebuilt weekly, so a freshly pulled image already carries recent data.
 
-### Race strategies from the CLI
+## Using it
+
+### The web UI
+
+Open <http://localhost:8000>. The dates default to the full window (2018 → latest),
+so just tick the strategies, optionally open **ⓘ** (read what a strategy does) or
+**⚙** (tune its parameters), and hit **Run race**. The race **starts at the starting
+line** — everyone tied, the charts blank — so pressing **Play** is a *reveal*, not a
+replay. You can scrub, change speed, jump to events (halvings, cycle tops/bottoms),
+overlay any strategy's buy/sell markers, declare and **validate** the winner,
+**auto-tune** a strategy, and watch the persistent **Hall of Fame** grow across
+sessions. (Full feature walkthrough: [ROADMAP.md](ROADMAP.md).)
+
+### From the command line
 
 One command races **all** strategies over a window and prints a leaderboard
 (after-tax, ranked by `standardized_score`):
@@ -219,7 +188,7 @@ python -m backend.engine.run --asset ETH --sort cagr --verbose
 python -m backend.engine.run --golden     # Buy & Hold (fee=0) == raw price return
 ```
 
-### API
+### HTTP API
 
 | Route | Purpose |
 |-------|---------|
@@ -241,66 +210,25 @@ curl -s -X POST localhost:8000/api/backtest \
   -H 'Content-Type: application/json' \
   -d '{"asset":"BTC","start":"2018-01-01","capital":10000}'
 
-# A subset with a parameter override and tax disabled:
-curl -s -X POST localhost:8000/api/backtest \
-  -H 'Content-Type: application/json' \
-  -d '{"asset":"BTC","tax":{"enabled":false},
-       "strategies":[{"name":"mayer","params":{"buy_below":0.9}},{"name":"buy_hold"}]}'
-
 # Auto-tune one strategy's params out-of-sample (returns tuned params + a hold-out verdict):
 curl -s -X POST localhost:8000/api/auto-tune \
   -H 'Content-Type: application/json' \
   -d '{"asset":"BTC","start":"2018-01-01","strategy":"mayer","n_folds":3}'
 ```
 
-### Web UI (Stage 9 — the full game)
-
-With the app running (Docker or `uvicorn`), open <http://localhost:8000>. The dates
-default to the full window (2018 → latest data), so just tick the strategies to race
-(open ⓘ on any strategy to read **what it does** in plain English, or ⚙ to **tune its
-parameters** with sliders built from its declared schema) and hit **Run race**. The page calls `POST /api/backtest` *once* and
-then plays the whole thing back client-side — "compute once, animate in the browser",
-no streaming. It **starts at the starting line**: everyone tied at the opening
-capital and the charts blank, so pressing **Play** is a *reveal*, not a replay:
-
-- a **candlestick price chart** (log-scale) whose candles, 200-Week MA, halving +
-  cycle lines and bull/bear regime shading **reveal in sync with the clock** — so you
-  discover how Bitcoin actually moved at the same moment as the bots, nothing ahead of
-  "now" given away. The selected strategy's **buy/sell arrows appear as the playhead
-  reaches each trade** (overlay defaults to the winner; switch via the Trades selector
-  or by clicking a leaderboard row);
-- a **play-by-play feed** — the overlaid strategy's trades scroll past with date,
-  side, size and the strategy's own reason as the race reaches them;
-- a **transport bar** — Play/Pause, a timeline scrubber, a speed slider (default
-  25 simulated days/sec, up to 400), a current-date + bull/bear cycle-phase readout,
-  and **jump-to-event** buttons (halvings, cycle tops/bottoms, COVID crash, latest);
-- a **multi-line equity chart** that **draws in over simulated time** (pre-/after-tax
-  toggle, a clickable legend to show/hide lines, stable axis so it doesn't jump);
-- a **live leaderboard** that **re-orders** by each strategy's portfolio value at the
-  current day; when the race crosses the **finish line** the **winner card** is
-  revealed (best by after-tax `standardized_score`, with alpha vs Buy & Hold, tax
-  paid, max drawdown) alongside an **Export JSON** button;
-- **Validate the winner** — one click runs **walk-forward** and **start-date
-  robustness** and shows a robust/fragile verdict with per-fold / per-start detail;
-- **Auto-tune** any strategy (the ✨ button inside its ⚙ panel) — grid-searches its
-  params scored **out-of-sample**, sets the sliders to the best it finds, and reports
-  whether those beat the defaults on an untouched hold-out window (honestly, even when
-  the answer is "no");
-- a **persistent Hall of Fame** — a ranked table (expandable to each strategy's
-  configs, times-tried, margins), a ranked-score bar chart, and a best-score-over-time
-  line that grows as you experiment across sessions;
-- an ⓘ **info panel** on every strategy (plain-English thesis, exact rule,
-  level/edge/scheduled triggering, and the data it reads) plus a **"where does the data
-  come from?"** note — so no strategy and no number is a black box.
-
-Charts are [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)
-(MIT), loaded from a CDN — no build step.
-
 ### Tests
 
 ```bash
 python -m pytest tests/ -q
 ```
+
+## Tech stack
+
+- **Backend:** Python 3.12 + FastAPI (serves the JSON API and the static frontend)
+- **Data/cache:** SQLite (prices, indicators, Fear & Greed, MVRV)
+- **Engine:** custom, pandas-backed daily loop with strict no-look-ahead
+- **Frontend:** plain HTML/CSS/vanilla JS + TradingView Lightweight Charts
+- **Container:** Docker / docker-compose, single image, one port
 
 ## Project structure
 
@@ -314,8 +242,8 @@ crypto-arena/
   data/              # SQLite db + raw cache (mounted volume, gitignored)
   backend/
     main.py          # FastAPI app + routes + static mount
-    data/            # fetchers, indicators, sqlite store + runs ledger (Stages 1, 7)
-    engine/          # portfolio, tax, backtest loop, metrics, ledger, validation (Stages 2, 7)
-    strategies/      # strategy plugins + registry (Stages 2-3)
-  frontend/          # UI: index.html, app.js, charts.js, playback.js, arena_extras.js, styles.css (Stages 5-7)
+    data/            # fetchers, indicators, sqlite store + runs ledger
+    engine/          # portfolio, tax, backtest loop, metrics, ledger, validation
+    strategies/      # strategy plugins + registry
+  frontend/          # UI: index.html, app.js, charts.js, playback.js, arena_extras.js, styles.css
 ```
