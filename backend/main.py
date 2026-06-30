@@ -44,7 +44,7 @@ store.init_schema()  # ensure all tables (incl. the Stage-7 runs ledger) exist
 @app.get("/api/health")
 def health() -> dict:
     """Liveness probe. Returns OK so we can confirm the app is up."""
-    return {"status": "ok", "service": "crypto-arena", "stage": 7}
+    return {"status": "ok", "service": "crypto-arena", "stage": 8}
 
 
 @app.get("/api/data/status")
@@ -424,6 +424,25 @@ def robustness(req: ValidationRequest) -> dict:
     return validation_mod.robustness(
         history, cls, params, start_dates=req.start_dates or None,
         fee_pct=req.fee_pct, tax_policy=tax_policy, capital=req.capital,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 8 — grid-search auto-tuner
+# ---------------------------------------------------------------------------
+@app.post("/api/auto-tune")
+def auto_tune(req: ValidationRequest) -> dict:
+    """Grid-search one strategy's params, scored out-of-sample (never in-sample).
+
+    Returns the best params found (so the UI can drop them straight into the
+    sliders) plus an honest hold-out verdict: whether those tuned params actually
+    beat the hand-picked defaults on a final window neither tuning nor selection
+    ever saw. ``n_folds`` controls how many OOS selection windows are used.
+    """
+    cls, history, tax_policy = _validation_context(req)
+    return validation_mod.auto_tune(
+        history, cls, n_folds=req.n_folds, fee_pct=req.fee_pct,
+        tax_policy=tax_policy, capital=req.capital,
     )
 
 

@@ -133,6 +133,19 @@ label.strat { display: flex !important; align-items: center; }
   width: 100%; margin: 0.1rem 0 0; padding: 0; accent-color: var(--accent);
 }
 
+/* Stage-8 auto-tuner controls (inside each strategy's param panel) */
+.param-tune { margin-top: 0.5rem; border-top: 1px dashed var(--border); padding-top: 0.45rem; }
+.tune-btn {
+  background: transparent; border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 5px; padding: 0.2rem 0.5rem; font-size: 0.72rem; cursor: pointer;
+}
+.tune-btn:hover:not(:disabled) { background: var(--accent); color: #1a1a1a; }
+.tune-btn:disabled { opacity: 0.5; cursor: progress; }
+.tune-out { display: block; margin-top: 0.35rem; font-size: 0.72rem; line-height: 1.35; }
+.tune-out.pos { color: var(--pos); }
+.tune-out.neg { color: var(--neg); }
+.tune-out.err { color: var(--neg); }
+
 button {
   margin-top: 0.6rem;
   padding: 0.45rem 0.8rem;

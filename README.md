@@ -27,11 +27,11 @@ config** — backed by a persistent Hall of Fame that accumulates across session
 | 5 | Frontend core — static price + equity charts | ✅ |
 | 6 | The race — playback + live-reordering leaderboard | ✅ |
 | 7 | Polish — param sliders, winner card, JSON export, persistent Hall of Fame, walk-forward + robustness | ✅ |
-| 8 | Grid-search auto-tuner (stretch) | ⏳ next |
+| 8 | Grid-search auto-tuner — per-strategy params optimized **out-of-sample** | ✅ |
 
 **MVP cut line reached at Stage 3:** the CLI can already answer "which strategy
 wins" over real history. Stages 4+ add the JSON API and the visual game. As of
-Stage 7 the browser UI at <http://localhost:8000> is the complete loop:
+Stage 8 the browser UI at <http://localhost:8000> is the complete loop:
 
 - **race** all strategies with **per-strategy parameter sliders** (built from each
   strategy's declared schema) and animated playback (scrubber, play/pause, speed,
@@ -49,7 +49,13 @@ Stage 7 the browser UI at <http://localhost:8000> is the complete loop:
 - two **out-of-sample honesty checks** — **walk-forward** (tune params on each fold's
   past, score its untouched future, roll forward) and **start-date robustness**
   (re-run from several entry dates) — each returning a robust/fragile verdict so a
-  curve-fit "winner" is caught before it's trusted.
+  curve-fit "winner" is caught before it's trusted;
+- a per-strategy **grid-search auto-tuner** (Stage 8) — one ✨ click brute-forces a
+  parameter grid scored only on **out-of-sample** windows (never the data it'll be
+  judged on, which would just maximize overfitting), drops the best params straight
+  into the sliders, and tells you honestly whether they actually **beat the
+  hand-picked defaults on an untouched hold-out window** (the answer is allowed to be
+  "no" — a strategy with no real edge can't be tuned into one).
 
 **Strategies (9, auto-discovered plugins, each with a declared param schema):**
 Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
@@ -216,6 +222,7 @@ python -m backend.engine.run --golden     # Buy & Hold (fee=0) == raw price retu
 | `GET /api/hall-of-fame` | Persistent ledger ranked for one settings signature (best score, configs, times-tried, best-over-time) |
 | `POST /api/walk-forward` | Walk-forward validate one strategy: tune in-sample → score out-of-sample, roll forward |
 | `POST /api/robustness` | Re-run one fixed config from several start dates → how often it beats Buy & Hold |
+| `POST /api/auto-tune` | Grid-search one strategy's params scored out-of-sample → best params + a beats-the-defaults-on-a-hold-out verdict |
 
 ```bash
 # Race every strategy on BTC from 2018 (empty "strategies" = all):
@@ -228,9 +235,14 @@ curl -s -X POST localhost:8000/api/backtest \
   -H 'Content-Type: application/json' \
   -d '{"asset":"BTC","tax":{"enabled":false},
        "strategies":[{"name":"mayer","params":{"buy_below":0.9}},{"name":"buy_hold"}]}'
+
+# Auto-tune one strategy's params out-of-sample (returns tuned params + a hold-out verdict):
+curl -s -X POST localhost:8000/api/auto-tune \
+  -H 'Content-Type: application/json' \
+  -d '{"asset":"BTC","start":"2018-01-01","strategy":"mayer","n_folds":3}'
 ```
 
-### Web UI (Stage 7 — the full game)
+### Web UI (Stage 8 — the full game)
 
 With the app running (Docker or `uvicorn`), open <http://localhost:8000>. The dates
 default to the full window (2018 → latest data), so just tick the strategies to race
@@ -259,6 +271,10 @@ capital and the charts blank, so pressing **Play** is a *reveal*, not a replay:
   paid, max drawdown) alongside an **Export JSON** button;
 - **Validate the winner** — one click runs **walk-forward** and **start-date
   robustness** and shows a robust/fragile verdict with per-fold / per-start detail;
+- **Auto-tune** any strategy (the ✨ button inside its ⚙ panel) — grid-searches its
+  params scored **out-of-sample**, sets the sliders to the best it finds, and reports
+  whether those beat the defaults on an untouched hold-out window (honestly, even when
+  the answer is "no");
 - a **persistent Hall of Fame** — a ranked table (expandable to each strategy's
   configs, times-tried, margins), a ranked-score bar chart, and a best-score-over-time
   line that grows as you experiment across sessions.

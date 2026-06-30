@@ -135,6 +135,16 @@
             });
             params.appendChild(row);
           }
+          // Stage-8 auto-tuner: grid-search this strategy's params, scored out-of-
+          // sample, and drop the winners straight into the sliders above.
+          const tune = document.createElement("div");
+          tune.className = "param-tune";
+          tune.innerHTML =
+            `<button type="button" class="tune-btn">✨ Auto-tune (out-of-sample)</button>` +
+            `<span class="tune-out muted"></span>`;
+          params.appendChild(tune);
+          tune.querySelector(".tune-btn").addEventListener("click", () =>
+            autoTune(s.name, params, tune));
           wrap.appendChild(params);
           label.querySelector(".param-toggle").addEventListener("click", (e) => {
             e.preventDefault();
@@ -182,6 +192,86 @@
       out[s.dataset.key] = Number(s.value);
     });
     return out;
+  }
+
+  // The shared run settings (everything but the strategy list) — used by the race
+  // request and by the auto-tuner so both score on the same window/fees/tax.
+  function runConfig() {
+    return {
+      asset: $("asset").value,
+      start: $("start").value || null,
+      end: $("end").value || null,
+      capital: Number($("capital").value),
+      fee_pct: Number($("fee").value) / 100,
+      tax: { enabled: $("tax-enabled").checked, rate: Number($("tax-rate").value) / 100 },
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stage 8 — per-strategy grid-search auto-tuner
+  // ---------------------------------------------------------------------------
+  async function autoTune(name, paramsBox, tuneBox) {
+    const btn = tuneBox.querySelector(".tune-btn");
+    const out = tuneBox.querySelector(".tune-out");
+    btn.disabled = true;
+    out.className = "tune-out muted";
+    out.textContent = "searching the grid out-of-sample…";
+    try {
+      const res = await fetch("/api/auto-tune", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // n_folds=3 → a meatier (~½-window) untouched hold-out for the verdict.
+        body: JSON.stringify({ strategy: name, ...runConfig(), n_folds: 3 }),
+      });
+      if (!res.ok) throw new Error(await errText(res));
+      const data = await res.json();
+      if (!data.tunable) {
+        out.className = "tune-out muted";
+        out.textContent = "no tunable parameters.";
+        return;
+      }
+      applyTunedParams(paramsBox, data.tuned_params);
+      renderTuneResult(out, data);
+    } catch (err) {
+      out.className = "tune-out err";
+      out.textContent = `auto-tune failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // Push tuned values into the strategy's sliders (and their readouts) so the next
+  // Run uses them and the user can hand-tweak from there.
+  function applyTunedParams(box, tuned) {
+    box.querySelectorAll('input[type="range"]').forEach((s) => {
+      const k = s.dataset.key;
+      if (tuned[k] == null) return;
+      s.value = tuned[k];
+      const dec = Number(s.dataset.dec) || 0;
+      const pv = s.closest(".param-row").querySelector(".pv");
+      if (pv) pv.textContent = Number(s.value).toFixed(dec);
+    });
+  }
+
+  // The honest hold-out verdict: did the tuned params beat the defaults on a window
+  // neither tuning nor selection ever saw? (Allowed to be "no" — that's the point.)
+  function renderTuneResult(out, d) {
+    const v = d.beats_default_oos;
+    out.className = "tune-out " + (v ? "pos" : v === false ? "neg" : "muted");
+    const tt = d.test_tuned, td = d.test_default;
+    const hold = d.holdout ? `${d.holdout.start}→${d.holdout.end}` : "?";
+    const cmp = (tt && td)
+      ? ` · hold-out ${hold}: tuned ${tt.score.toFixed(2)} vs default ${td.score.toFixed(2)}`
+      : "";
+    const tag = v
+      ? "✓ beats defaults on unseen data"
+      : v === false ? "✗ no gain on unseen data (tuned anyway)" : "inconclusive";
+    out.innerHTML = `<strong>${tag}</strong> — sliders set to tuned params${cmp}`;
+    out.title =
+      `Out-of-sample selection score: tuned ${d.tuned_selection_score} vs ` +
+      `default ${d.default_selection_score} ` +
+      `(grid of ${d.n_combos} combos over ${d.n_selection_windows} windows). ` +
+      `Verdict judged on the untouched hold-out window.`;
   }
 
   // ---------------------------------------------------------------------------

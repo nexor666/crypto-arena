@@ -12,8 +12,12 @@ checks are the cheap, on-demand filters that separate a real edge from luck:
 * :func:`robustness` — re-run one fixed config from several different start dates and
   see how often it still beats Buy & Hold. A strategy that only wins from one lucky
   entry date is fragile.
+* :func:`auto_tune` (Stage 8) — brute-force a parameter grid, ranking combos by their
+  mean **out-of-sample** score and reporting whether the winner beats the hand-picked
+  defaults on a final untouched hold-out. The grid widens what walk-forward already
+  does; the OOS-only ranking is the anti-overfit rule.
 
-Both reuse the real engine (:func:`run_backtest`) on sliced sub-histories, so they
+All reuse the real engine (:func:`run_backtest`) on sliced sub-histories, so they
 inherit the no-look-ahead guarantee. Everything is computed after-tax, matching the
 ranking lens used everywhere else.
 """
@@ -59,16 +63,19 @@ def _grid_values(spec: dict[str, Any], max_per: int = 3) -> list[float]:
     return vals
 
 
-def grid_combos(schema_json: dict[str, dict], max_combos: int = MAX_GRID_COMBOS) -> list[dict[str, Any]]:
+def grid_combos(schema_json: dict[str, dict], max_combos: int = MAX_GRID_COMBOS,
+                max_per: int = 3) -> list[dict[str, Any]]:
     """Coarse cartesian grid over a strategy's declared param schema (capped).
 
-    With no params (e.g. Buy & Hold) returns ``[{}]`` — a single no-op combo, so a
+    ``max_per`` is how many values each axis is sampled at (the walk-forward tuner
+    uses the default 3; the Stage-8 auto-tuner widens it for a finer search). With
+    no params (e.g. Buy & Hold) returns ``[{}]`` — a single no-op combo, so a
     parameterless strategy still walks-forward (just with nothing to tune).
     """
     if not schema_json:
         return [{}]
     keys = list(schema_json)
-    axes = [_grid_values(schema_json[k]) for k in keys]
+    axes = [_grid_values(schema_json[k], max_per=max_per) for k in keys]
     combos = [dict(zip(keys, vals)) for vals in itertools.product(*axes)]
     if len(combos) > max_combos:
         # thin uniformly rather than truncating, so we keep spread across the space
@@ -238,6 +245,145 @@ def robustness(
         "score_mean": round(sum(scores) / len(scores), 4),
         # wins from most entry dates = the edge isn't a single-date fluke
         "verdict": "robust" if wins / n >= 0.6 else "fragile",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Stage 8 — grid-search auto-tuner
+# ---------------------------------------------------------------------------
+def auto_tune(
+    history: History, cls: type[Strategy], *,
+    n_folds: int = 3, max_per: int = 5, max_combos: int = 120,
+    fee_pct: float = 0.0, tax_policy: TaxPolicy | None = None,
+    capital: float = 10_000.0,
+) -> dict[str, Any]:
+    """Brute-force a parameter grid, scored on OUT-OF-SAMPLE windows (never in-sample).
+
+    In-sample grid search just maximises overfitting — picking the params that best
+    fit the noise of the data you already saw. So the tuner never ranks combos on the
+    window it will be judged on:
+
+    * The full window is cut into ``n_folds + 2`` contiguous chunks. Chunk 0 is the
+      earliest data (warm-up context, never scored); the **last** chunk is an
+      untouched **hold-out test** that selection never looks at; the chunks between
+      are the **out-of-sample selection windows**.
+    * Every grid combo is scored by its **mean** after-tax ``standardized_score``
+      across the selection windows (fixed params — no inner re-tuning), and the best
+      combo is chosen. Averaging OOS performance over several windows is the honest
+      stand-in for in-sample search.
+    * Finally the chosen combo AND the hand-picked defaults are each scored on the
+      untouched hold-out, so the caller can see whether the tuned params actually
+      **beat the defaults on unseen data** (the Stage-8 done-when). That answer is
+      allowed to honestly come back *False* — a strategy with no real edge should not
+      be tuneable into one, and we report that rather than hide it.
+
+    Reuses the real engine on sliced sub-histories, so the no-look-ahead guarantee
+    holds and everything is after-tax, matching the ranking lens used everywhere.
+    """
+    tax_policy = tax_policy or TaxPolicy()
+    dates = history.dates
+    schema = cls.schema_json()
+    defaults = cls.default_params()
+    bh = registry_buy_hold()
+
+    # A parameterless strategy (or one whose schema is empty) has nothing to tune.
+    if not schema:
+        return {
+            "strategy": cls.name, "tunable": False,
+            "tuned_params": defaults, "default_params": defaults,
+            "note": "This strategy has no tunable parameters.",
+        }
+
+    # Need enough data for n_folds+2 chunks of meaningful length; shrink folds if short.
+    if len(dates) < (n_folds + 2) * 15:
+        n_folds = max(1, len(dates) // 30 - 1)
+    n_folds = max(1, n_folds)
+    nchunks = n_folds + 2
+    bounds = [round(k * len(dates) / nchunks) for k in range(nchunks + 1)]
+
+    # selection OOS windows = chunks 1..n_folds (chunk 0 = warm-up); test = last chunk
+    sel_windows = []
+    for i in range(1, n_folds + 1):
+        lo, hi = bounds[i], bounds[i + 1] - 1
+        if hi > lo:
+            sel_windows.append(slice_history(history, dates[lo], dates[hi]))
+    sel_windows = [w for w in sel_windows if len(w) >= 10]
+    test_lo, test_hi = bounds[nchunks - 1], bounds[nchunks] - 1
+    test = slice_history(history, dates[test_lo], dates[test_hi]) if test_hi > test_lo else None
+    if test is not None and len(test) < 10:
+        test = None
+
+    combos = grid_combos(schema, max_combos=max_combos, max_per=max_per)
+
+    def mean_oos(params: dict[str, Any]) -> float:
+        """Mean after-tax standardized score over the OOS selection windows."""
+        scores = []
+        for w in sel_windows:
+            m = _run_score(w, cls, params, fee_pct=fee_pct,
+                           tax_policy=tax_policy, capital=capital)
+            scores.append(metrics_mod.standardized_score(m))
+        return sum(scores) / len(scores) if scores else -1e18
+
+    ranked = sorted(
+        ((mean_oos(c), c) for c in combos), key=lambda x: x[0], reverse=True
+    )
+    best_score, best_combo = ranked[0]
+    default_oos = mean_oos(defaults)
+
+    def test_eval(params: dict[str, Any]) -> dict[str, Any] | None:
+        """Score one config on the untouched hold-out (vs Buy & Hold there)."""
+        if test is None:
+            return None
+        m = _run_score(test, cls, params, fee_pct=fee_pct,
+                       tax_policy=tax_policy, capital=capital)
+        bhm = _run_score(test, bh, {}, fee_pct=fee_pct,
+                         tax_policy=tax_policy, capital=capital)
+        return {
+            "score": round(metrics_mod.standardized_score(m), 4),
+            "cagr": round(m.cagr, 4),
+            "return_pct": round(m.total_return_pct, 4),
+            "bh_return_pct": round(bhm.total_return_pct, 4),
+            "alpha_vs_bh": round(m.total_return_pct - bhm.total_return_pct, 4),
+        }
+
+    tuned = cls.resolve_params(best_combo)
+    test_tuned = test_eval(best_combo)
+    test_default = test_eval(defaults)
+    beats_default = (
+        bool(test_tuned["score"] > test_default["score"])
+        if (test_tuned and test_default) else None
+    )
+
+    return {
+        "strategy": cls.name,
+        "tunable": True,
+        "n_combos": len(combos),
+        "n_selection_windows": len(sel_windows),
+        "tuned_params": tuned,
+        "default_params": defaults,
+        "tuned_selection_score": round(best_score, 4),
+        "default_selection_score": round(default_oos, 4),
+        "selection_window": (
+            {"start": sel_windows[0].dates[0], "end": sel_windows[-1].dates[-1]}
+            if sel_windows else None
+        ),
+        "holdout": (
+            {"start": test.dates[0], "end": test.dates[-1]} if test is not None else None
+        ),
+        "test_tuned": test_tuned,
+        "test_default": test_default,
+        # The done-when answer, judged on data NEITHER tuning NOR selection ever saw.
+        "beats_default_oos": beats_default,
+        # Top alternatives for transparency (the grid isn't a black box).
+        "top": [
+            {"params": cls.resolve_params(c), "selection_score": round(s, 4)}
+            for s, c in ranked[:5]
+        ],
+        "verdict": (
+            "improved" if beats_default
+            else "no_improvement" if beats_default is not None
+            else "inconclusive"
+        ),
     }
 
 
