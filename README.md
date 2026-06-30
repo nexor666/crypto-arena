@@ -14,7 +14,7 @@ keys, no real money. Focus is long-term halving-cycle strategies, not day tradin
 
 ## What you get
 
-- Race **9 built-in strategies** across 2018 → today and watch the leaderboard
+- Race **10 built-in strategies** across 2018 → today and watch the leaderboard
   shuffle live as the cycles play out.
 - See **exactly when each strategy bought and sold**, drawn onto the price chart as
   the race unfolds.

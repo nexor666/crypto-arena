@@ -8,6 +8,7 @@ in the registry (and, later, the frontend) with zero other changes.
 
 from backend.strategies import (  # noqa: F401
     buy_hold,
+    cycle_ratchet,
     fear_greed,
     halving_cycle,
     ma_crossover,
@@ -20,6 +21,7 @@ from backend.strategies import (  # noqa: F401
 
 __all__ = [
     "buy_hold",
+    "cycle_ratchet",
     "fear_greed",
     "halving_cycle",
     "ma_crossover",

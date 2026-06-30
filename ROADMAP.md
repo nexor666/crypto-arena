@@ -18,7 +18,7 @@ use** it, see the [README](README.md).
 | 7 | Polish — param sliders, winner card, JSON export, persistent Hall of Fame, walk-forward + robustness | ✅ |
 | 8 | Grid-search auto-tuner — per-strategy params optimized **out-of-sample** | ✅ |
 | 9 | Strategy transparency — plain-English info panels + data-source provenance | ✅ |
-| 10 | "Cycle Ratchet" strategy (scale out on new highs / in on new lows, gated to halving phase) + gradual-scaling defaults | 🔜 planned |
+| 10 | "Cycle Ratchet" strategy (scale out on new highs / in on new lows, gated to halving phase) + gradual-scaling defaults | ✅ |
 | 11 | Custom-strategy builder (declarative rule DSL, no code) + MACD indicator | 🔜 planned |
 | 12 | UX & quality batch + more assets | 🔜 planned |
 
@@ -70,11 +70,14 @@ churning, not the ones with the flashiest top-line number.
 
 ## The strategy library
 
-9 strategies, auto-discovered plugins, each with a declared parameter schema and a
+10 strategies, auto-discovered plugins, each with a declared parameter schema and a
 plain-English info panel in the UI:
 
 Buy & Hold, 200-Week MA, Mayer Multiple, MVRV Z-Score (BTC-only), Fear & Greed,
-Halving Cycle Timing, MA Crossover (50/200), Weekly RSI, Periodic Rebalance.
+Halving Cycle Timing, MA Crossover (50/200), Weekly RSI, Periodic Rebalance, and the
+**Cycle Ratchet** — scale out a fraction on each new high in the post-halving
+distribution window and scale in on each new low in the accumulation window, gated to
+the known halving clock (never a hindsight top/bottom), defaulting to full commitment.
 
 Adding a strategy is one file: drop a `Strategy` subclass into `backend/strategies/`
 and it appears in the CLI, the API and the UI automatically.

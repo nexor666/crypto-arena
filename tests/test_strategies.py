@@ -7,6 +7,7 @@ formula. These complement the engine golden tests in ``test_engine.py``.
 
 from __future__ import annotations
 
+import datetime
 import math
 
 import pytest
@@ -17,7 +18,8 @@ from backend.engine.capital import LumpSum
 from backend.engine.history import History
 from backend.engine.portfolio import Portfolio
 from backend.engine.tax import TaxPolicy
-from backend.strategies.base import registry
+from backend.strategies.base import BUY, Order, registry
+from backend.strategies.cycle_ratchet import CycleRatchet
 from backend.strategies.halving_cycle import HalvingCycle, _days_since_last_halving
 from backend.strategies.rebalance import Rebalance
 
@@ -41,7 +43,7 @@ def test_registry_has_all_strategies():
     reg = registry()
     expected = {
         "buy_hold", "fear_greed", "200w_ma", "mayer", "mvrv_z",
-        "halving", "ma_cross", "rsi_weekly", "rebalance",
+        "halving", "ma_cross", "rsi_weekly", "rebalance", "cycle_ratchet",
     }
     assert expected <= set(reg)
     # Every strategy declares a non-empty, well-formed param schema.
@@ -141,6 +143,56 @@ def test_halving_buys_in_accumulate_window():
     hist = _history([{"date": "2027-01-15", "close": 100.0}])
     orders, _ = strat.decide("2027-01-15", hist, params, pf)
     assert orders and orders[0].side == "BUY"
+
+
+# ---------------------------------------------------------------------------
+# Cycle Ratchet: scale out on new highs (distribution), in on new lows (accumulation)
+# ---------------------------------------------------------------------------
+def _ratchet_history(end_date, n, price_fn, mayer):
+    """``n`` daily records ending on ``end_date``; ``price_fn(k)`` sets each close.
+    The last record carries ``mayer`` so the froth/value gate can be exercised."""
+    end = datetime.date.fromisoformat(end_date)
+    recs = [{"date": (end - datetime.timedelta(days=n - 1 - k)).isoformat(),
+             "close": float(price_fn(k))} for k in range(n)]
+    recs[-1]["mayer"] = mayer
+    h = History("BTC", recs)
+    h.i = len(recs) - 1
+    return h
+
+
+def test_cycle_ratchet_scales_out_on_new_high_in_distribution():
+    strat, params = CycleRatchet(), CycleRatchet().resolve_params()
+    # ~499 days after the 2024-04-20 halving = inside the distribution window;
+    # strictly ascending closes → today is a new high; Mayer 1.5 clears the froth gate.
+    hist = _ratchet_history("2025-09-01", 95, lambda k: 100 + k, mayer=1.5)
+    pf = Portfolio(fee_pct=0.0)
+    pf.add_cash(1000.0, hist._records[0]["date"])
+    pf.execute(Order("BTC", BUY, fraction=1.0), {"BTC": 100.0}, hist._records[0]["date"])
+    assert pf.quantity("BTC") > 0
+    orders, _ = strat.decide(hist.today, hist, params, pf)
+    assert orders and orders[0].side == "SELL"
+
+
+def test_cycle_ratchet_scales_in_on_new_low_in_accumulation():
+    strat, params = CycleRatchet(), CycleRatchet().resolve_params()
+    # ~864 days after the halving = inside the accumulation window; strictly
+    # descending closes → today is a new low; Mayer 0.8 clears the value gate.
+    hist = _ratchet_history("2026-09-01", 95, lambda k: 200 - k, mayer=0.8)
+    pf = Portfolio(fee_pct=0.0)
+    pf.add_cash(1000.0, hist._records[0]["date"])
+    orders, _ = strat.decide(hist.today, hist, params, pf)
+    assert orders and orders[0].side == "BUY"
+
+
+def test_cycle_ratchet_holds_outside_its_phase_windows():
+    strat, params = CycleRatchet(), CycleRatchet().resolve_params()
+    # ~120 days after the halving (early bull) = neither window → a new high does nothing.
+    hist = _ratchet_history("2024-08-18", 95, lambda k: 100 + k, mayer=1.5)
+    pf = Portfolio(fee_pct=0.0)
+    pf.add_cash(1000.0, hist._records[0]["date"])
+    pf.execute(Order("BTC", BUY, fraction=1.0), {"BTC": 100.0}, hist._records[0]["date"])
+    orders, _ = strat.decide(hist.today, hist, params, pf)
+    assert orders == []
 
 
 # ---------------------------------------------------------------------------
